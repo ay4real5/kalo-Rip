@@ -1,0 +1,208 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  role          UserRole  @default(CUSTOMER)
+  phone         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  instructor    Instructor?
+  customer      Customer?
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  INSTRUCTOR
+  CUSTOMER
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  userId          String   @unique @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postcode        String
+  transmission    Transmission @default(MANUAL)
+  experienceLevel ExperienceLevel @default(BEGINNER)
+  preferredDays   Int[]    @map("preferred_days")
+  preferredTimes  String?  @map("preferred_times")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  bookings        Booking[]
+  calls           CallLog[]
+
+  @@map("customers")
+}
+
+enum Transmission {
+  MANUAL
+  AUTOMATIC
+  BOTH
+}
+
+enum ExperienceLevel {
+  BEGINNER
+  SOME_EXPERIENCE
+  TEST_READY
+  REFRESHER
+}
+
+model Instructor {
+  id                  String   @id @default(cuid())
+  userId              String   @unique @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio                 String?
+  phone               String?
+  vehicleType         String?  @map("vehicle_type")
+  transmission        Transmission @default(MANUAL)
+  basePostcode        String   @map("base_postcode")
+  servicePostcodes    String[] @map("service_postcodes")
+  lessonDurationMinutes Int    @default(60) @map("lesson_duration_minutes")
+  travelBufferMinutes Int    @default(15) @map("travel_buffer_minutes")
+  maxLessonsPerDay    Int     @default(6) @map("max_lessons_per_day")
+  hourlyRatePence     Int     @default(3500) @map("hourly_rate_pence")
+  acceptsNewLearners  Boolean @default(true) @map("accepts_new_learners")
+  offersIntensive     Boolean @default(false) @map("offers_intensive")
+  autoConfirm         Boolean @default(false) @map("auto_confirm")
+  active              Boolean @default(true)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  availability      Availability[]
+  blackoutDates     BlackoutDate[]
+  bookings          Booking[]
+  scheduleOverrides ScheduleOverride[]
+
+  @@map("instructors")
+}
+
+model Availability {
+  id            String   @id @default(cuid())
+  instructorId  String   @map("instructor_id")
+  instructor    Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  dayOfWeek     Int      @map("day_of_week")
+  startTime     String   @map("start_time")
+  endTime       String   @map("end_time")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([instructorId, dayOfWeek, startTime])
+  @@map("availability")
+}
+
+model BlackoutDate {
+  id            String   @id @default(cuid())
+  instructorId  String   @map("instructor_id")
+  instructor    Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  date          DateTime @db.Date
+  reason        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("blackout_dates")
+}
+
+model ScheduleOverride {
+  id            String   @id @default(cuid())
+  instructorId  String   @map("instructor_id")
+  instructor    Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  date          DateTime @db.Date
+  startTime     String?  @map("start_time")
+  endTime       String?  @map("end_time")
+  isAvailable   Boolean  @default(false) @map("is_available")
+  reason        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("schedule_overrides")
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  customerId    String        @map("customer_id")
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  instructorId  String        @map("instructor_id")
+  instructor    Instructor    @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  startsAt      DateTime      @map("starts_at")
+  endsAt        DateTime      @map("ends_at")
+  status        BookingStatus @default(CONFIRMED)
+  pricePence    Int           @map("price_pence")
+  lessonType    LessonType    @default(REGULAR) @map("lesson_type")
+  notes         String?
+  source        BookingSource @default(PHONE_AI)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  cancelledAt   DateTime?     @map("cancelled_at")
+  cancellationReason String?  @map("cancellation_reason")
+
+  @@map("bookings")
+}
+
+enum BookingStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum LessonType {
+  REGULAR
+  INTENSIVE
+  TEST
+  REFRESHER
+}
+
+enum BookingSource {
+  PHONE_AI
+  PORTAL
+  ADMIN
+}
+
+model SlotHold {
+  id            String   @id @default(cuid())
+  instructorId  String @map("instructor_id")
+  startsAt      DateTime @map("starts_at")
+  endsAt        DateTime @map("ends_at")
+  customerPhone String? @map("customer_phone")
+  expiresAt     DateTime @map("expires_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([instructorId, startsAt])
+  @@map("slot_holds")
+}
+
+model CallLog {
+  id              String   @id @default(cuid())
+  twilioSid       String?  @unique @map("twilio_sid")
+  customerId      String?  @map("customer_id")
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  fromNumber      String   @map("from_number")
+  toNumber        String   @map("to_number")
+  status          CallStatus @default(IN_PROGRESS)
+  startedAt       DateTime @default(now()) @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  transcript      String?
+  summary         String?
+  handoffReason   String?  @map("handoff_reason")
+  bookingId       String?  @map("booking_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("call_logs")
+}
+
+enum CallStatus {
+  IN_PROGRESS
+  HANDED_OFF
+  COMPLETED
+  FAILED
+}
