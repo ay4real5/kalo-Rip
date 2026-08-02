@@ -7,9 +7,9 @@ import {
   MessageSquareText,
   ShieldCheck,
   Clock,
-  ArrowRight,
   CheckCircle2,
   Car,
+  Calendar,
 } from "lucide-react";
 
 const features = [
@@ -81,11 +81,11 @@ export default function Home() {
               Kalo Rip answers learner and parent calls, checks real instructor availability, books lessons and only hands off to you when it needs to.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Button href="/admin" size="lg" variant="primary" icon={<ArrowRight size={18} />}>
-                Open dashboard
+              <Button href="/book" size="lg" variant="primary" icon={<Calendar size={18} />}>
+                Book a lesson
               </Button>
-              <Button href="/instructor" size="lg" variant="outline" className="border-slate-600 text-slate-200 hover:bg-slate-800 hover:text-white">
-                Instructor portal
+              <Button href="/admin" size="lg" variant="outline" className="border-slate-600 text-slate-200 hover:bg-slate-800 hover:text-white">
+                Open dashboard
               </Button>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Phone, LayoutDashboard, CalendarDays, Menu, X, User, LogOut } from "lucide-react";
+import { Phone, LayoutDashboard, CalendarDays, Menu, X, User, LogOut, Calendar } from "lucide-react";
 import { Button } from "@/app/components/ui/Button";
 import { createClient } from "@/app/lib/supabase/client";
 
@@ -38,6 +38,7 @@ export function NavBar() {
   }
 
   const links = [
+    { href: "/book", icon: Calendar, label: "Book now" },
     { href: "/admin", icon: LayoutDashboard, label: "Admin" },
     { href: "/instructor", icon: CalendarDays, label: "Instructor" },
   ];
