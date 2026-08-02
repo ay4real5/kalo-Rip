@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Phone, LayoutDashboard, CalendarDays, Menu, X, User, LogOut, Calendar } from "lucide-react";
 import { Button } from "@/app/components/ui/Button";
+import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { createClient } from "@/app/lib/supabase/client";
 
 interface UserProfile {
@@ -44,9 +45,9 @@ export function NavBar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/80">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <Link href="/" className="flex items-center gap-2.5 text-slate-900">
+        <Link href="/" className="flex items-center gap-2.5 text-slate-900 dark:text-white">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/20">
             <Phone size={18} strokeWidth={2.5} />
           </div>
@@ -58,7 +59,7 @@ export function NavBar() {
             <Link
               key={link.href}
               href={link.href}
-              className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
             >
               <link.icon size={16} />
               {link.label}
@@ -67,21 +68,22 @@ export function NavBar() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle />
           {!loading && (
             user ? (
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+                <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                   <User size={14} />
                   <span className="max-w-[120px] truncate">{user.name ?? user.email}</span>
                   {user.role && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 capitalize">
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 capitalize dark:bg-emerald-900 dark:text-emerald-300">
                       {user.role}
                     </span>
                   )}
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
                   <LogOut size={16} />
                   Log out
@@ -91,7 +93,7 @@ export function NavBar() {
               <>
                 <Link
                   href="/login"
-                  className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
                   Sign in
                 </Link>
@@ -104,7 +106,7 @@ export function NavBar() {
         </div>
 
         <button
-          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
         >
           {mobileOpen ? <X size={24} /> : <Menu size={24} />}
@@ -112,19 +114,22 @@ export function NavBar() {
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-slate-200 bg-white px-6 py-4 md:hidden">
+        <div className="border-t border-slate-200 bg-white px-6 py-4 md:hidden dark:border-slate-700 dark:bg-slate-900">
           <nav className="flex flex-col gap-2">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 onClick={() => setMobileOpen(false)}
               >
                 <link.icon size={16} />
                 {link.label}
               </Link>
             ))}
+            <div className="py-2">
+              <ThemeToggle />
+            </div>
             {user ? (
               <button
                 onClick={() => {
@@ -138,7 +143,7 @@ export function NavBar() {
               </button>
             ) : (
               <>
-                <Link href="/login" className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+                <Link href="/login" className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
                   Sign in
                 </Link>
                 <Button href="/register" size="sm" variant="primary" className="mt-2">

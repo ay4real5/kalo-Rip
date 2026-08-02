@@ -15,12 +15,12 @@ interface ButtonProps {
 
 const variants = {
   primary:
-    "bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-500 hover:shadow-emerald-600/30",
+    "bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-500 hover:shadow-emerald-600/30 dark:bg-emerald-600 dark:hover:bg-emerald-500",
   secondary:
-    "bg-slate-900 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800",
+    "bg-slate-900 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200",
   outline:
-    "border-2 border-slate-200 bg-white text-slate-700 hover:border-emerald-600 hover:text-emerald-600",
-  ghost: "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+    "border-2 border-slate-200 bg-white text-slate-700 hover:border-emerald-600 hover:text-emerald-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-emerald-500 dark:hover:text-emerald-400",
+  ghost: "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
   danger: "bg-red-600 text-white hover:bg-red-500",
 };
 
