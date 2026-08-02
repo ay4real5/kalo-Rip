@@ -111,20 +111,20 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(59,130,246,0.1),transparent_50%)]" />
         <div className="relative mx-auto max-w-6xl">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-1.5 text-sm font-medium text-emerald-400 ring-1 ring-emerald-500/20">
+            <div className="animate-fade-in-up mx-auto inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-1.5 text-sm font-medium text-emerald-400 ring-1 ring-emerald-500/20">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
               </span>
               AI receptionist for driving schools
             </div>
-            <h1 className="mt-6 text-4xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl">
+            <h1 className="animate-fade-in-up stagger-1 mt-6 text-4xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl">
               Never miss a booking call again
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-300 lg:text-xl">
+            <p className="animate-fade-in-up stagger-2 mx-auto mt-6 max-w-2xl text-lg text-slate-300 lg:text-xl">
               Kalo Rip answers learner and parent calls, checks real instructor availability, books lessons and only hands off to you when it needs to.
             </p>
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <div className="animate-fade-in-up stagger-3 mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Button href="/book" size="lg" variant="primary" icon={<Calendar size={18} />}>
                 Book a lesson
               </Button>
@@ -212,16 +212,16 @@ export default function Home() {
       <section className="px-6 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            <h2 className="animate-fade-in-up text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               Everything you need to run bookings
             </h2>
-            <p className="mt-4 text-lg text-slate-600">
+            <p className="animate-fade-in-up stagger-1 mt-4 text-lg text-slate-600">
               From the first phone call to the confirmed lesson, Kalo Rip keeps the process smooth.
             </p>
           </div>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => (
-              <Card key={feature.title} hover padding="lg">
+            {features.map((feature, i) => (
+              <Card key={feature.title} hover padding="lg" className={`animate-fade-in-up stagger-${Math.min(i + 1, 5)}`}>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                   <feature.icon size={24} />
                 </div>
@@ -239,16 +239,16 @@ export default function Home() {
       <section className="bg-slate-900 px-6 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            <h2 className="animate-fade-in-up text-3xl font-bold tracking-tight text-white sm:text-4xl">
               How it works
             </h2>
-            <p className="mt-4 text-lg text-slate-300">
+            <p className="animate-fade-in-up stagger-1 mt-4 text-lg text-slate-300">
               Four simple steps from phone call to confirmed lesson.
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            {steps.map((step) => (
-              <div key={step.number} className="relative rounded-2xl border border-slate-700 bg-slate-800/50 p-6">
+            {steps.map((step, i) => (
+              <div key={step.number} className={`relative rounded-2xl border border-slate-700 bg-slate-800/50 p-6 animate-fade-in-up stagger-${Math.min(i + 1, 5)}`}>
                 <div className="text-4xl font-bold text-slate-700">{step.number}</div>
                 <div className="mt-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
                   <step.icon size={24} />
@@ -265,16 +265,16 @@ export default function Home() {
       <section className="px-6 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            <h2 className="animate-fade-in-up text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               Loved by driving schools
             </h2>
-            <p className="mt-4 text-lg text-slate-600">
+            <p className="animate-fade-in-up stagger-1 mt-4 text-lg text-slate-600">
               See how schools are using Kalo Rip to grow.
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-3">
-            {testimonials.map((t) => (
-              <Card key={t.author} padding="lg" className="relative">
+            {testimonials.map((t, i) => (
+              <Card key={t.author} padding="lg" className={`relative animate-fade-in-up stagger-${Math.min(i + 1, 5)}`}>
                 <div className="flex gap-1 text-amber-400">
                   {[...Array(5)].map((_, i) => (
                     <Star key={i} size={16} fill="currentColor" />
