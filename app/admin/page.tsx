@@ -12,6 +12,7 @@ import {
   Settings,
   Save,
   Plus,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
@@ -71,6 +72,16 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [handoffNumber, setHandoffNumber] = useState("");
   const [savingHandoff, setSavingHandoff] = useState(false);
+
+  async function cancelBooking(id: string) {
+    if (!confirm("Are you sure you want to cancel this booking?")) return;
+    const res = await fetch(`/api/bookings/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, status: "CANCELLED" } : b))
+      );
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -237,6 +248,7 @@ export default function AdminDashboard() {
                         <th className="px-6 py-3">Time</th>
                         <th className="px-6 py-3">Status</th>
                         <th className="px-6 py-3">Source</th>
+                        <th className="px-6 py-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -248,12 +260,23 @@ export default function AdminDashboard() {
                           <td className="px-6 py-4 text-slate-700">{b.instructor.user.name ?? "Unknown"}</td>
                           <td className="px-6 py-4 text-slate-700">{formatTime(b.startsAt)}</td>
                           <td className="px-6 py-4">
-                            <Badge variant="success" dot>
+                            <Badge variant={b.status === "CANCELLED" ? "neutral" : "success"} dot>
                               {b.status}
                             </Badge>
                           </td>
                           <td className="px-6 py-4">
                             <Badge variant={b.source === "PHONE_AI" ? "primary" : "neutral"}>{b.source}</Badge>
+                          </td>
+                          <td className="px-6 py-4">
+                            {b.status !== "CANCELLED" && (
+                              <button
+                                onClick={() => cancelBooking(b.id)}
+                                className="flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700"
+                              >
+                                <XCircle size={14} />
+                                Cancel
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}

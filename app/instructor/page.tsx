@@ -1,23 +1,40 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, Plus, Trash2, CalendarDays, MapPin, Car, PoundSterling, Settings } from "lucide-react";
+import {
+  Clock,
+  Plus,
+  Trash2,
+  CalendarDays,
+  MapPin,
+  Car,
+  PoundSterling,
+  Settings,
+} from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Badge } from "@/app/components/ui/Badge";
 import { Button } from "@/app/components/ui/Button";
+import { ProfileEditor } from "@/app/instructor/ProfileEditor";
+import { cn } from "@/app/lib/cn";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 interface Instructor {
   id: string;
   user: { name: string | null; email: string | null };
+  bio: string | null;
+  phone: string | null;
   vehicleType: string | null;
   basePostcode: string;
+  servicePostcodes: string[];
   transmission: string;
   hourlyRatePence: number;
   lessonDurationMinutes: number;
+  travelBufferMinutes: number;
   maxLessonsPerDay: number;
   acceptsNewLearners: boolean;
+  offersIntensive: boolean;
+  autoConfirm: boolean;
   active: boolean;
 }
 
@@ -34,6 +51,7 @@ export default function InstructorPortal() {
   const [availability, setAvailability] = useState<Availability[]>([]);
   const [form, setForm] = useState({ dayOfWeek: 1, startTime: "09:00", endTime: "17:00" });
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"availability" | "profile">("availability");
 
   useEffect(() => {
     fetch("/api/instructors")
@@ -74,6 +92,10 @@ export default function InstructorPortal() {
     setAvailability((prev) => prev.filter((a) => a.id !== id));
   }
 
+  function updateInstructor(updated: Instructor) {
+    setInstructors((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+  }
+
   const activeInstructor = instructors.find((i) => i.id === selected);
 
   if (loading) {
@@ -94,7 +116,7 @@ export default function InstructorPortal() {
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-8 flex items-end justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Instructor portal</h1>
             <p className="text-slate-500">Manage your profile, availability and time off.</p>
@@ -155,103 +177,134 @@ export default function InstructorPortal() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-2" padding="none">
-            <div className="border-b border-slate-200 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                  <CalendarDays size={20} />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Weekly availability</CardTitle>
-                  <CardDescription>Set the days and hours you teach</CardDescription>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 py-4">
-              {availability.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-12 text-slate-500">
-                  <Clock size={32} className="mb-3 opacity-40" />
-                  <p className="font-medium">No availability set</p>
-                  <p className="text-sm">Add your first weekly slot below.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {availability.map((a) => (
-                    <div
-                      key={a.id}
-                      className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-4"
-                    >
-                      <div className="flex items-center gap-4">
-                        <Badge variant="primary">{DAYS[a.dayOfWeek]}</Badge>
-                        <span className="text-sm font-medium text-slate-700">
-                          {a.startTime} - {a.endTime}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => removeAvailability(a.id)}
-                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-red-600 transition hover:bg-red-50"
-                      >
-                        <Trash2 size={14} />
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Card>
-
-          <Card padding="md">
-            <CardHeader className="px-0 pb-4">
-              <div className="flex items-center gap-2">
-                <Settings size={18} className="text-emerald-600" />
-                <CardTitle className="text-lg">Add slot</CardTitle>
-              </div>
-              <CardDescription>Add a repeating weekly time slot</CardDescription>
-            </CardHeader>
-            <form onSubmit={addAvailability} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">Day</label>
-                <select
-                  className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
-                  value={form.dayOfWeek}
-                  onChange={(e) => setForm({ ...form, dayOfWeek: Number(e.target.value) })}
-                >
-                  {DAYS.map((d, i) => (
-                    <option key={d} value={i}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-600">Start</label>
-                  <input
-                    type="time"
-                    className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
-                    value={form.startTime}
-                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-600">End</label>
-                  <input
-                    type="time"
-                    className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
-                    value={form.endTime}
-                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full" icon={<Plus size={16} />}>
-                Add weekly slot
-              </Button>
-            </form>
-          </Card>
+        <div className="mb-6 flex gap-2">
+          <button
+            onClick={() => setTab("availability")}
+            className={cn(
+              "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
+              tab === "availability" ? "bg-slate-900 text-white shadow-md" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+            )}
+          >
+            Availability
+          </button>
+          <button
+            onClick={() => setTab("profile")}
+            className={cn(
+              "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
+              tab === "profile" ? "bg-slate-900 text-white shadow-md" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+            )}
+          >
+            Profile
+          </button>
         </div>
+
+        {tab === "availability" && (
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2" padding="none">
+              <div className="border-b border-slate-200 px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                    <CalendarDays size={20} />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Weekly availability</CardTitle>
+                    <CardDescription>Set the days and hours you teach</CardDescription>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-6 py-4">
+                {availability.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-12 text-slate-500">
+                    <Clock size={32} className="mb-3 opacity-40" />
+                    <p className="font-medium">No availability set</p>
+                    <p className="text-sm">Add your first weekly slot below.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {availability.map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-4"
+                      >
+                        <div className="flex items-center gap-4">
+                          <Badge variant="primary">{DAYS[a.dayOfWeek]}</Badge>
+                          <span className="text-sm font-medium text-slate-700">
+                            {a.startTime} - {a.endTime}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => removeAvailability(a.id)}
+                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={14} />
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <Card padding="md">
+              <CardHeader className="px-0 pb-4">
+                <div className="flex items-center gap-2">
+                  <Settings size={18} className="text-emerald-600" />
+                  <CardTitle className="text-lg">Add slot</CardTitle>
+                </div>
+                <CardDescription>Add a repeating weekly time slot</CardDescription>
+              </CardHeader>
+              <form onSubmit={addAvailability} className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">Day</label>
+                  <select
+                    className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                    value={form.dayOfWeek}
+                    onChange={(e) => setForm({ ...form, dayOfWeek: Number(e.target.value) })}
+                  >
+                    {DAYS.map((d, i) => (
+                      <option key={d} value={i}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">Start</label>
+                    <input
+                      type="time"
+                      className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                      value={form.startTime}
+                      onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">End</label>
+                    <input
+                      type="time"
+                      className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                      value={form.endTime}
+                      onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <Button type="submit" className="w-full" icon={<Plus size={16} />}>
+                  Add weekly slot
+                </Button>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {tab === "profile" && activeInstructor && (
+          <ProfileEditor
+            key={activeInstructor.id}
+            instructor={activeInstructor}
+            onUpdate={updateInstructor}
+          />
+        )}
       </div>
     </div>
   );
