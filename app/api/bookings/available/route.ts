@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchAvailableSlots } from "@/app/lib/booking-engine";
+import { rateLimit, getClientIp } from "@/app/lib/rate-limit";
 import { z } from "zod";
 
 const schema = z.object({
@@ -11,6 +12,15 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const rl = rateLimit(`search:${ip}`, 30, 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+      );
+    }
+
     const body = await request.json();
     const parsed = schema.parse(body);
 

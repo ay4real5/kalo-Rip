@@ -15,6 +15,8 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/u
 import { Badge } from "@/app/components/ui/Badge";
 import { Button } from "@/app/components/ui/Button";
 import { ProfileEditor } from "@/app/instructor/ProfileEditor";
+import { BookingsTab } from "@/app/instructor/BookingsTab";
+import { BlackoutsTab } from "@/app/instructor/BlackoutsTab";
 import { cn } from "@/app/lib/cn";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -51,13 +53,13 @@ export default function InstructorPortal() {
   const [availability, setAvailability] = useState<Availability[]>([]);
   const [form, setForm] = useState({ dayOfWeek: 1, startTime: "09:00", endTime: "17:00" });
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"availability" | "profile">("availability");
+  const [tab, setTab] = useState<"availability" | "profile" | "bookings" | "timeoff">("availability");
 
   useEffect(() => {
     fetch("/api/instructors")
       .then((r) => r.json())
       .then((data) => {
-        setInstructors(data);
+        setInstructors(Array.isArray(data) ? data : data.items ?? []);
         if (data[0]) setSelected(data[0].id);
         setLoading(false);
       });
@@ -177,21 +179,39 @@ export default function InstructorPortal() {
           </div>
         )}
 
-        <div className="mb-6 flex gap-2">
+        <div className="mb-6 flex flex-wrap gap-2">
+          <button
+            onClick={() => setTab("bookings")}
+            className={cn(
+              "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
+              tab === "bookings" ? "bg-slate-900 text-white shadow-md dark:bg-slate-100 dark:text-slate-900" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700"
+            )}
+          >
+            My bookings
+          </button>
           <button
             onClick={() => setTab("availability")}
             className={cn(
               "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
-              tab === "availability" ? "bg-slate-900 text-white shadow-md" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+              tab === "availability" ? "bg-slate-900 text-white shadow-md dark:bg-slate-100 dark:text-slate-900" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700"
             )}
           >
             Availability
           </button>
           <button
+            onClick={() => setTab("timeoff")}
+            className={cn(
+              "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
+              tab === "timeoff" ? "bg-slate-900 text-white shadow-md dark:bg-slate-100 dark:text-slate-900" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700"
+            )}
+          >
+            Time off
+          </button>
+          <button
             onClick={() => setTab("profile")}
             className={cn(
               "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
-              tab === "profile" ? "bg-slate-900 text-white shadow-md" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+              tab === "profile" ? "bg-slate-900 text-white shadow-md dark:bg-slate-100 dark:text-slate-900" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700"
             )}
           >
             Profile
@@ -296,6 +316,14 @@ export default function InstructorPortal() {
               </form>
             </Card>
           </div>
+        )}
+
+        {tab === "bookings" && activeInstructor && (
+          <BookingsTab instructorId={activeInstructor.id} />
+        )}
+
+        {tab === "timeoff" && activeInstructor && (
+          <BlackoutsTab instructorId={activeInstructor.id} />
         )}
 
         {tab === "profile" && activeInstructor && (

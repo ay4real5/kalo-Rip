@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { createBooking } from "@/app/lib/booking-engine";
 import { sendEmail, bookingConfirmationHtml } from "@/app/lib/email";
+import { sendBookingConfirmation } from "@/app/lib/notifications";
+import { rateLimit, getClientIp } from "@/app/lib/rate-limit";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -31,6 +33,15 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const rl = rateLimit(`booking:${ip}`, 10, 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many booking attempts. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+      );
+    }
+
     const body = await request.json();
     const parsed = createSchema.parse(body);
 
@@ -61,7 +72,7 @@ export async function POST(request: Request) {
       source: parsed.source,
     });
 
-    // Fire and forget — do not block the response on email
+    // Fire and forget — do not block the response on email/SMS
     sendEmail({
       to: parsed.email,
       subject: "Your driving lesson is booked",
@@ -73,6 +84,12 @@ export async function POST(request: Request) {
         customerName: parsed.name,
       }),
     }).catch((err) => console.error("[bookings] email failed:", err));
+
+    sendBookingConfirmation({
+      customer: { ...customer, user },
+      instructor: booking.instructor,
+      booking,
+    }).catch((err) => console.error("[bookings] sms failed:", err));
 
     return NextResponse.json(booking, { status: 201 });
   } catch (error) {

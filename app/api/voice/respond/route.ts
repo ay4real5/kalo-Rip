@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getHandoffNumber } from "@/app/lib/settings";
+import { verifyTwilioSignature } from "@/app/lib/twilio-verify";
 import { executeTool, getToolDefinitions, type CallContext } from "@/app/lib/voice-tools";
 
 interface VoiceMessage {
@@ -48,6 +49,15 @@ function buildTwiML(sayText: string, gather = true, handoffNumber: string, trans
 }
 
 export async function POST(req: Request) {
+  // Verify the request is genuinely from Twilio
+  const valid = await verifyTwilioSignature(req, process.env.TWILIO_AUTH_TOKEN);
+  if (!valid) {
+    return new NextResponse("<Response><Say>Unauthorized</Say></Response>", {
+      status: 403,
+      headers: { "Content-Type": "text/xml" },
+    });
+  }
+
   const handoffNumber = await getHandoffNumber();
   const form = await req.formData();
   const callSid = String(form.get("CallSid") ?? "unknown");

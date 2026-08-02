@@ -19,22 +19,31 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [serverSearch, setServerSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    fetch("/api/customers")
+    const params = new URLSearchParams();
+    if (serverSearch) params.set("search", serverSearch);
+    params.set("page", String(page));
+    fetch(`/api/customers?${params.toString()}`)
       .then((r) => r.json())
       .then((data) => {
-        setCustomers(data);
+        setCustomers(data.items ?? data);
+        setTotalPages(data.totalPages ?? 1);
         setLoading(false);
       });
-  }, []);
+  }, [serverSearch, page]);
 
-  const filtered = customers.filter(
-    (c) =>
-      (c.user.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
-      c.user.email.toLowerCase().includes(search.toLowerCase()) ||
-      c.postcode.toLowerCase().includes(search.toLowerCase())
-  );
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setServerSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   if (loading) {
     return (
@@ -75,7 +84,7 @@ export default function CustomersPage() {
         </Card>
 
         <Card padding="none" className="overflow-hidden">
-          {filtered.length === 0 ? (
+          {customers.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-6 py-16 text-slate-500">
               <Users size={32} className="mb-2 opacity-40" />
               <p>No customers found.</p>
@@ -93,7 +102,7 @@ export default function CustomersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((c) => (
+                  {customers.map((c) => (
                     <tr key={c.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -138,6 +147,30 @@ export default function CustomersPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 dark:border-slate-700">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Page {page} of {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </Card>

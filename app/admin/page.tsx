@@ -13,6 +13,7 @@ import {
   Save,
   Plus,
   XCircle,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
@@ -74,6 +75,41 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [handoffNumber, setHandoffNumber] = useState("");
   const [savingHandoff, setSavingHandoff] = useState(false);
+  const [reschedule, setReschedule] = useState<{ id: string; startsAt: string } | null>(null);
+  const [rescheduleValue, setRescheduleValue] = useState("");
+  const [rescheduling, setRescheduling] = useState(false);
+
+  function startReschedule(id: string, currentStartsAt: string) {
+    const dt = new Date(currentStartsAt);
+    const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setReschedule({ id, startsAt: currentStartsAt });
+    setRescheduleValue(local);
+  }
+
+  async function submitReschedule() {
+    if (!reschedule) return;
+    setRescheduling(true);
+    const startsAt = new Date(rescheduleValue);
+    const res = await fetch(`/api/bookings/${reschedule.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startsAt: startsAt.toISOString() }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setBookings((prev) =>
+        prev.map((b) => (b.id === reschedule.id ? { ...b, startsAt: updated.startsAt, endsAt: updated.endsAt } : b))
+      );
+      showToast("Booking rescheduled", "success");
+      setReschedule(null);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || "Failed to reschedule", "error");
+    }
+    setRescheduling(false);
+  }
 
   async function cancelBooking(id: string) {
     if (!confirm("Are you sure you want to cancel this booking?")) return;
@@ -96,7 +132,7 @@ export default function AdminDashboard() {
       fetch("/api/settings?key=human_handoff_number").then((r) => r.json()),
     ]).then(([b, i, c, s]) => {
       setBookings(b);
-      setInstructors(i);
+      setInstructors(Array.isArray(i) ? i : i.items ?? []);
       setCalls(c);
       setHandoffNumber((s as { value: string | null }).value ?? "");
       setLoading(false);
@@ -276,13 +312,22 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-6 py-4">
                             {b.status !== "CANCELLED" && (
-                              <button
-                                onClick={() => cancelBooking(b.id)}
-                                className="flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700"
-                              >
-                                <XCircle size={14} />
-                                Cancel
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  onClick={() => startReschedule(b.id, b.startsAt)}
+                                  className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                                >
+                                  <CalendarDays size={14} />
+                                  Reschedule
+                                </button>
+                                <button
+                                  onClick={() => cancelBooking(b.id)}
+                                  className="flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700"
+                                >
+                                  <XCircle size={14} />
+                                  Cancel
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -454,6 +499,34 @@ export default function AdminDashboard() {
               </div>
             </div>
           </Card>
+        )}
+
+        {reschedule && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6">
+            <Card padding="lg" className="w-full max-w-md">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Reschedule booking</h3>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Currently: {new Date(reschedule.startsAt).toLocaleString("en-GB")}
+              </p>
+              <div className="mt-6">
+                <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">New date & time</label>
+                <input
+                  type="datetime-local"
+                  value={rescheduleValue}
+                  onChange={(e) => setRescheduleValue(e.target.value)}
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <Button variant="secondary" onClick={() => setReschedule(null)} disabled={rescheduling}>
+                  Cancel
+                </Button>
+                <Button onClick={submitReschedule} disabled={rescheduling} icon={rescheduling ? <Loader2 size={16} className="animate-spin" /> : undefined}>
+                  {rescheduling ? "Saving..." : "Reschedule"}
+                </Button>
+              </div>
+            </Card>
+          </div>
         )}
       </div>
     </div>

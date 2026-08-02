@@ -24,7 +24,7 @@ type UserWithCustomer = {
 };
 
 type BookingWithRelations = Booking & {
-  customer: Customer & { user: { name: string | null; email: string | null } };
+  customer: Customer & { user: { name: string | null; email: string | null; phone: string | null } };
   instructor: Instructor & { user: { name: string | null } };
 };
 
