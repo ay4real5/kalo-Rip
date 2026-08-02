@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { cancelBooking } from "@/app/lib/booking-engine";
+import {
+  cancelBooking,
+  isExclusionViolation,
+  SlotUnavailableError,
+} from "@/app/lib/booking-engine";
 import { authorize } from "@/app/lib/auth/api";
 import type { User } from "@prisma/client";
 import { z } from "zod";
@@ -153,6 +157,13 @@ export async function PATCH(
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors }, { status: 400 });
+    }
+    // The pre-check above can still lose a race; the database catches it.
+    if (error instanceof SlotUnavailableError || isExclusionViolation(error)) {
+      return NextResponse.json(
+        { error: "Instructor has another booking at that time" },
+        { status: 409 }
+      );
     }
     console.error("Update booking error:", error);
     return NextResponse.json(

@@ -151,6 +151,15 @@ model Booking {
   paymentReference String?    @map("payment_reference")
   review        Review?
 
+  // Availability search scans an instructor's diary over a date window on
+  // every enquiry; the reminder cron and admin list scan by date and status.
+  @@index([instructorId, startsAt])
+  @@index([customerId, startsAt])
+  @@index([status, startsAt])
+  // Overlapping CONFIRMED bookings are additionally blocked by an exclusion
+  // constraint that Prisma's schema language can't express — see
+  // migrations/20260802150000_prevent_double_booking. Do not rely on application
+  // checks alone; they race.
   @@map("bookings")
 }
 

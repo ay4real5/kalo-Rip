@@ -1,12 +1,12 @@
 import { prisma } from "@/app/lib/prisma";
+import { addMinutes, areIntervalsOverlapping } from "date-fns";
 import {
-  addMinutes,
-  areIntervalsOverlapping,
-  endOfDay,
-  format,
-  isSameDay,
-  startOfDay,
-} from "date-fns";
+  calendarDateOf,
+  dayOfWeekFor,
+  eachDateInRange,
+  startOfLocalDay,
+  zonedTimeToUtc,
+} from "@/app/lib/timezone";
 import type { Prisma } from "@prisma/client";
 
 type BookingRecord = {
@@ -57,8 +57,11 @@ const DEFAULT_LESSON_MINUTES = 60;
 export async function searchAvailableSlots(
   input: SearchSlotInput
 ): Promise<AvailableSlot[]> {
-  const startDate = input.startDate ?? input.preferredDate ?? startOfDay(new Date());
-  const endDate = input.endDate ?? addMinutes(endOfDay(startDate), 14 * 24 * 60); // 2 weeks ahead
+  // Window boundaries are local days, not server days.
+  const startDate =
+    input.startDate ?? input.preferredDate ?? startOfLocalDay(new Date());
+  const endDate =
+    input.endDate ?? addMinutes(startOfLocalDay(startDate), 15 * 24 * 60); // 2 weeks ahead
 
   const instructors = await findEligibleInstructors(input);
   const slots: AvailableSlot[] = [];
@@ -73,11 +76,16 @@ export async function searchAvailableSlots(
     }
 
     const availability = await getInstructorAvailability(instructor.id, startDate, endDate);
+
+    // Match anything *overlapping* the window. Filtering on startsAt alone
+    // missed a lesson that began before the window and ran into it, so the
+    // opening slot of the range could be offered while already booked.
     const existingBookings: BookingRecord[] = await prisma.booking.findMany({
       where: {
         instructorId: instructor.id,
         status: { in: ["CONFIRMED"] },
-        startsAt: { gte: startDate, lte: endDate },
+        startsAt: { lt: endDate },
+        endsAt: { gt: startDate },
       },
     });
 
@@ -85,7 +93,8 @@ export async function searchAvailableSlots(
       where: {
         instructorId: instructor.id,
         expiresAt: { gt: new Date() },
-        startsAt: { gte: startDate, lte: endDate },
+        startsAt: { lt: endDate },
+        endsAt: { gt: startDate },
       },
     });
 
@@ -96,19 +105,22 @@ export async function searchAvailableSlots(
         const endsAt = addMinutes(cursor, lessonMinutes);
         const proposed = { startsAt: cursor, endsAt };
 
+        // Half-open [start, end): a lesson ending at 10:00 does not clash with
+        // one starting at 10:00. `inclusive: true` counted touching intervals
+        // as overlapping, so every booking also blocked the hour either side
+        // of itself and back-to-back lessons could never be offered. This
+        // matches the database exclusion constraint, which uses '[)' too.
         const isBooked = existingBookings.some((b) =>
           areIntervalsOverlapping(
             { start: b.startsAt, end: b.endsAt },
-            { start: proposed.startsAt, end: proposed.endsAt },
-            { inclusive: true }
+            { start: proposed.startsAt, end: proposed.endsAt }
           )
         );
 
         const isHeld = holds.some((h) =>
           areIntervalsOverlapping(
             { start: h.startsAt, end: h.endsAt },
-            { start: proposed.startsAt, end: proposed.endsAt },
-            { inclusive: true }
+            { start: proposed.startsAt, end: proposed.endsAt }
           )
         );
 
@@ -174,10 +186,16 @@ async function getInstructorAvailability(
     orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
   });
 
+  // Date-only columns are stored at midnight UTC while the window boundaries
+  // are local midnight, so pad a day either side rather than lose an edge day
+  // to the offset between them. Matching is done on calendar date below.
+  const rangeStart = addMinutes(startDate, -24 * 60);
+  const rangeEnd = addMinutes(endDate, 24 * 60);
+
   const blackouts: { date: Date }[] = await prisma.blackoutDate.findMany({
     where: {
       instructorId,
-      date: { gte: startDate, lte: endDate },
+      date: { gte: rangeStart, lte: rangeEnd },
     },
   });
 
@@ -189,36 +207,42 @@ async function getInstructorAvailability(
   }[] = await prisma.scheduleOverride.findMany({
     where: {
       instructorId,
-      date: { gte: startDate, lte: endDate },
+      date: { gte: rangeStart, lte: rangeEnd },
     },
   });
 
-  let cursor = startOfDay(startDate);
-  while (cursor <= endDate) {
-    const dateBlackout = blackouts.some((b) => isSameDay(b.date, cursor));
-    if (!dateBlackout) {
-      const override = overrides.find((o) => isSameDay(o.date, cursor));
-      const dayOfWeek = cursor.getDay();
-      const dateString = format(cursor, "yyyy-MM-dd");
+  // Blackouts and overrides are date-only columns standing for a whole local
+  // day, so they are keyed by calendar date rather than compared as instants.
+  const blackoutDates = new Set(blackouts.map((b) => calendarDateOf(b.date)));
+  const overridesByDate = new Map(
+    overrides.map((o) => [calendarDateOf(o.date), o])
+  );
 
-      if (override) {
-        if (override.isAvailable && override.startTime && override.endTime) {
-          result.push({
-            startsAt: new Date(`${dateString}T${override.startTime}`),
-            endsAt: new Date(`${dateString}T${override.endTime}`),
-          });
-        }
-      } else {
-        for (const window of weekly) {
-          if (window.dayOfWeek !== dayOfWeek) continue;
-          result.push({
-            startsAt: new Date(`${dateString}T${window.startTime}`),
-            endsAt: new Date(`${dateString}T${window.endTime}`),
-          });
-        }
+  // Step calendar dates in the school's timezone. Wall-clock strings like
+  // "09:00" are converted against that date's actual UTC offset, so a 9am
+  // lesson stays 9am to the caller on both sides of a DST change.
+  for (const dateString of eachDateInRange(startDate, endDate)) {
+    if (blackoutDates.has(dateString)) continue;
+
+    const override = overridesByDate.get(dateString);
+    if (override) {
+      if (override.isAvailable && override.startTime && override.endTime) {
+        result.push({
+          startsAt: zonedTimeToUtc(dateString, override.startTime),
+          endsAt: zonedTimeToUtc(dateString, override.endTime),
+        });
       }
+      continue;
     }
-    cursor = addMinutes(cursor, 24 * 60);
+
+    const dayOfWeek = dayOfWeekFor(dateString);
+    for (const window of weekly) {
+      if (window.dayOfWeek !== dayOfWeek) continue;
+      result.push({
+        startsAt: zonedTimeToUtc(dateString, window.startTime),
+        endsAt: zonedTimeToUtc(dateString, window.endTime),
+      });
+    }
   }
 
   return result;
@@ -257,55 +281,90 @@ export async function createBooking(input: BookingInput) {
   const endsAt =
     input.endsAt ?? addMinutes(input.startsAt, instructor.lessonDurationMinutes);
 
-  const existingBooking = await prisma.booking.findFirst({
-    where: {
-      instructorId: input.instructorId,
-      status: { in: ["CONFIRMED"] },
-      OR: [
-        {
+  if (endsAt <= input.startsAt) {
+    throw new Error("Booking must end after it starts");
+  }
+
+  // The conflict check and the insert must be one atomic step. Previously the
+  // check ran before the transaction, so two callers confirming the same slot
+  // could both see it free and both commit. The database enforces this too
+  // (see migrations/20260802150000_prevent_double_booking) — that constraint, not
+  // this check, is what actually makes it safe under concurrency. The check
+  // stays so the common case gets a readable error rather than a 23P01.
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const conflict = await tx.booking.findFirst({
+        where: {
+          instructorId: input.instructorId,
+          status: { in: ["CONFIRMED"] },
           startsAt: { lt: endsAt },
           endsAt: { gt: input.startsAt },
         },
-      ],
-    },
-  });
+      });
 
-  if (existingBooking) {
-    throw new Error("Selected slot is no longer available");
-  }
+      if (conflict) {
+        throw new SlotUnavailableError();
+      }
 
-  const activeHold = await prisma.slotHold.findFirst({
-    where: {
-      instructorId: input.instructorId,
-      startsAt: input.startsAt,
-      endsAt,
-      expiresAt: { gt: new Date() },
-    },
-  });
+      // Consume any hold covering this slot, whoever placed it: leaving it
+      // behind kept the slot looking taken until it expired.
+      await tx.slotHold.deleteMany({
+        where: {
+          instructorId: input.instructorId,
+          startsAt: { lt: endsAt },
+          endsAt: { gt: input.startsAt },
+        },
+      });
 
-  const booking = await prisma.$transaction(async (tx) => {
-    if (activeHold) {
-      await tx.slotHold.deleteMany({ where: { id: activeHold.id } });
-    }
-    return tx.booking.create({
-      data: {
-        customerId: input.customerId,
-        instructorId: input.instructorId,
-        startsAt: input.startsAt,
-        endsAt,
-        pricePence: instructor.hourlyRatePence,
-        lessonType: input.lessonType ?? "REGULAR",
-        notes: input.notes,
-        source: input.source ?? "PHONE_AI",
-      },
-      include: {
-        customer: { include: { user: true } },
-        instructor: { include: { user: true } },
-      },
+      return tx.booking.create({
+        data: {
+          customerId: input.customerId,
+          instructorId: input.instructorId,
+          startsAt: input.startsAt,
+          endsAt,
+          pricePence: instructor.hourlyRatePence,
+          lessonType: input.lessonType ?? "REGULAR",
+          notes: input.notes,
+          source: input.source ?? "PHONE_AI",
+        },
+        include: {
+          customer: { include: { user: true } },
+          instructor: { include: { user: true } },
+        },
+      });
     });
-  });
+  } catch (error) {
+    // 23P01 = exclusion_violation: the loser of a genuine race.
+    if (isExclusionViolation(error)) {
+      throw new SlotUnavailableError();
+    }
+    throw error;
+  }
+}
 
-  return booking;
+/** Thrown when the requested slot is already taken. */
+export class SlotUnavailableError extends Error {
+  constructor() {
+    super("Selected slot is no longer available");
+    this.name = "SlotUnavailableError";
+  }
+}
+
+/**
+ * Prisma has no mapped error code for an exclusion violation, and the shape it
+ * surfaces varies by driver, so match on the SQLSTATE and the constraint name
+ * wherever they appear.
+ */
+export function isExclusionViolation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const haystack = [
+    (error as { message?: string }).message ?? "",
+    JSON.stringify((error as { meta?: unknown }).meta ?? ""),
+  ].join(" ");
+  return (
+    haystack.includes("23P01") ||
+    haystack.includes("bookings_no_overlapping_confirmed")
+  );
 }
 
 export async function cancelBooking(bookingId: string, reason?: string) {
@@ -333,20 +392,33 @@ export async function rescheduleBooking(
   const endsAt =
     newEndsAt ?? addMinutes(newStartsAt, booking.instructor.lessonDurationMinutes);
 
-  const conflict = await prisma.booking.findFirst({
-    where: {
-      id: { not: bookingId },
-      instructorId: booking.instructorId,
-      status: { in: ["CONFIRMED"] },
-      startsAt: { lt: endsAt },
-      endsAt: { gt: newStartsAt },
-    },
-  });
+  if (endsAt <= newStartsAt) {
+    throw new Error("Booking must end after it starts");
+  }
 
-  if (conflict) throw new Error("New slot is unavailable");
+  // Same race as createBooking: check and write together, and let the
+  // exclusion constraint be the real arbiter.
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const conflict = await tx.booking.findFirst({
+        where: {
+          id: { not: bookingId },
+          instructorId: booking.instructorId,
+          status: { in: ["CONFIRMED"] },
+          startsAt: { lt: endsAt },
+          endsAt: { gt: newStartsAt },
+        },
+      });
 
-  return prisma.booking.update({
-    where: { id: bookingId },
-    data: { startsAt: newStartsAt, endsAt },
-  });
+      if (conflict) throw new SlotUnavailableError();
+
+      return tx.booking.update({
+        where: { id: bookingId },
+        data: { startsAt: newStartsAt, endsAt },
+      });
+    });
+  } catch (error) {
+    if (isExclusionViolation(error)) throw new SlotUnavailableError();
+    throw error;
+  }
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { sendLessonReminder } from "@/app/lib/notifications";
-import { addDays, startOfDay, endOfDay } from "date-fns";
+import { nextDate, zonedDateString, zonedTimeToUtc } from "@/app/lib/timezone";
 
 // Runs daily via Vercel Cron. Sends SMS reminders for lessons happening tomorrow.
 export async function GET(request: Request) {
@@ -17,13 +17,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const tomorrowStart = startOfDay(addDays(new Date(), 1));
-  const tomorrowEnd = endOfDay(addDays(new Date(), 1));
+  // "Tomorrow" means tomorrow in the school's timezone, not the server's. A
+  // server-local day boundary silently skipped early-morning lessons and
+  // pulled in ones from the day after whenever the two zones disagreed.
+  const tomorrow = nextDate(zonedDateString(new Date()));
+  const tomorrowStart = zonedTimeToUtc(tomorrow, "00:00");
+  const dayAfterStart = zonedTimeToUtc(nextDate(tomorrow), "00:00");
 
   const bookings = await prisma.booking.findMany({
     where: {
       status: "CONFIRMED",
-      startsAt: { gte: tomorrowStart, lte: tomorrowEnd },
+      startsAt: { gte: tomorrowStart, lt: dayAfterStart },
     },
     include: {
       customer: { include: { user: true } },
