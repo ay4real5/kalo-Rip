@@ -67,12 +67,21 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "instructorId required" }, { status: 400 });
     }
 
+    // Public endpoint — select explicitly. Including the customer relation
+    // wholesale previously published every reviewer's email and phone number.
     const reviews = await prisma.review.findMany({
       where: { instructorId },
-      include: {
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
         booking: {
-          include: {
-            customer: { include: { user: true } },
+          select: {
+            startsAt: true,
+            customer: {
+              select: { user: { select: { name: true } } },
+            },
           },
         },
       },

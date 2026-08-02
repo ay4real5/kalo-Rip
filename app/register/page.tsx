@@ -11,7 +11,6 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"instructor" | "admin">("instructor");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -26,8 +25,8 @@ export default function RegisterPage() {
       email,
       password,
       options: {
-        data: { name, role },
-        emailRedirectTo: `${window.location.origin}/admin`,
+        data: { name },
+        emailRedirectTo: `${window.location.origin}/my-bookings`,
       },
     });
 
@@ -37,18 +36,19 @@ export default function RegisterPage() {
       return;
     }
 
-    // Create user record in our database
+    // Create user record in our database. The server assigns the role — it is
+    // not ours to choose. Staff accounts are created by an admin.
+    let landingPage = "/my-bookings";
     if (data.user) {
-      await fetch("/api/auth/register", {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: data.user.id,
-          email,
-          name,
-          role: role.toUpperCase(),
-        }),
+        body: JSON.stringify({ id: data.user.id, email, name }),
       });
+      if (res.ok) {
+        const created = (await res.json()) as { role?: string };
+        if (created.role === "ADMIN") landingPage = "/admin";
+      }
     }
 
     // If email confirmation is required, show a notice
@@ -58,7 +58,7 @@ export default function RegisterPage() {
       return;
     }
 
-    window.location.href = "/admin";
+    window.location.href = landingPage;
   }
 
   return (
@@ -137,35 +137,10 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                Account type
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole("instructor")}
-                  className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
-                    role === "instructor"
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  Instructor
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("admin")}
-                  className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
-                    role === "admin"
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  Admin
-                </button>
-              </div>
-            </div>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              This creates a learner account. Instructor and admin access is
+              granted by your school administrator.
+            </p>
 
             {error && (
               <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">

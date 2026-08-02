@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { requireUser } from "@/app/lib/auth/server";
+import { authorize } from "@/app/lib/auth/api";
 
+// Admin-only: revenue and business performance figures.
 export async function GET(request: Request) {
   try {
-    await requireUser();
+    const { error } = await authorize(["ADMIN"]);
+    if (error) return error;
 
     const url = new URL(request.url);
     const fromParam = url.searchParams.get("from");

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { requireUser } from "@/app/lib/auth/server";
+import { authorizeInstructor } from "@/app/lib/auth/api";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -60,13 +61,18 @@ export async function PUT(
   }
 }
 
+// Full instructor record including staff contact details — scoped to the
+// instructor themselves or an admin. The customer-facing profile is
+// GET /api/instructors/public.
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireUser();
     const { id } = await params;
+    const { error } = await authorizeInstructor(id);
+    if (error) return error;
+
     const instructor = await prisma.instructor.findUnique({
       where: { id },
       include: { user: true },

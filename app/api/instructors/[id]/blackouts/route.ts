@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { requireUser } from "@/app/lib/auth/server";
+import { authorizeInstructor } from "@/app/lib/auth/api";
 import { z } from "zod";
 
 export async function GET(
@@ -8,8 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireUser();
     const { id } = await params;
+    const { error } = await authorizeInstructor(id);
+    if (error) return error;
     const blackouts = await prisma.blackoutDate.findMany({
       where: { instructorId: id },
       orderBy: { date: "asc" },

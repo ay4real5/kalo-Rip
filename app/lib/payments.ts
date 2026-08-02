@@ -1,16 +1,21 @@
 /**
- * Payment integration layer.
+ * Payment integration layer — ON HOLD, NOT WIRED UP.
  *
- * This is a placeholder that supports Stripe Checkout for taking lesson
- * deposits or full payments at booking time.
+ * Taking payments is deferred pending compliance review. The API routes that
+ * used this (app/api/payments/{checkout,success,webhook}) have been removed;
+ * nothing in the app can create a charge or mark a booking paid.
  *
- * To enable:
- *  1. npm i stripe @stripe/stripe-js
- *  2. Set STRIPE_SECRET_KEY and NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY env vars
- *  3. Uncomment the real Stripe calls below
+ * This stub is kept so the work isn't lost. Before re-enabling, note that the
+ * removed `success` route marked bookings paid straight from a query param
+ * with no auth and no Stripe verification — payment state must only ever be
+ * written by a signature-verified webhook.
  *
- * For now, createPaymentSession returns a null URL so the booking flow
- * still works without payment configured.
+ * To revive: restore the routes from git history (they were removed in the
+ * commit following b2c874d), then:
+ *  1. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET
+ *  2. Uncomment the real Stripe calls below
+ *  3. Verify amount_total against booking.pricePence, and make the webhook
+ *     idempotent on the Stripe event id
  */
 
 interface PaymentSession {

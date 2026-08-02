@@ -5,10 +5,15 @@ import { addDays, startOfDay, endOfDay } from "date-fns";
 
 // Runs daily via Vercel Cron. Sends SMS reminders for lessons happening tomorrow.
 export async function GET(request: Request) {
-  // Verify the request is from Vercel Cron
-  const authHeader = request.headers.get("authorization");
+  // Verify the request is from Vercel Cron. Fails closed: without CRON_SECRET
+  // this endpoint is refused rather than left open, since anyone hitting it
+  // can trigger an SMS send to every customer with a lesson tomorrow.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.error("CRON_SECRET is not set — refusing to run reminders.");
+    return NextResponse.json({ error: "Cron not configured" }, { status: 503 });
+  }
+  if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

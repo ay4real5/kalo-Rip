@@ -4,7 +4,7 @@ import { createBooking } from "@/app/lib/booking-engine";
 import { sendEmail, bookingConfirmationHtml } from "@/app/lib/email";
 import { sendBookingConfirmation } from "@/app/lib/notifications";
 import { rateLimit, getClientIp } from "@/app/lib/rate-limit";
-import { requireUser } from "@/app/lib/auth/server";
+import { authorize } from "@/app/lib/auth/api";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -21,15 +21,26 @@ const createSchema = z.object({
   source: z.enum(["PHONE_AI", "PORTAL", "ADMIN"]).default("PORTAL"),
 });
 
+// Staff view of the diary. An instructor sees only their own lessons; an
+// admin sees all. Customers use /api/me/bookings — this used to accept any
+// signed-in user, so a customer could page through the whole book with every
+// other customer's contact details attached.
 export async function GET(request: Request) {
   try {
-    await requireUser();
+    const { user, error } = await authorize(["ADMIN", "INSTRUCTOR"]);
+    if (error) return error;
+
     const url = new URL(request.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
     const status = url.searchParams.get("status") ?? "";
     const pageSize = 50;
 
-    const where = status ? { status: status as "CONFIRMED" | "COMPLETED" | "CANCELLED" } : {};
+    const where = {
+      ...(status
+        ? { status: status as "CONFIRMED" | "COMPLETED" | "CANCELLED" }
+        : {}),
+      ...(user.role === "ADMIN" ? {} : { instructor: { userId: user.id } }),
+    };
 
     const [bookings, total] = await Promise.all([
       prisma.booking.findMany({
