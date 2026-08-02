@@ -4,54 +4,11 @@ import { getHandoffNumber } from "@/app/lib/settings";
 import { verifyTwilioSignature } from "@/app/lib/twilio-verify";
 import { executeTool, getToolDefinitions, type CallContext } from "@/app/lib/voice-tools";
 
-interface ToolCall {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-}
-
-interface VoiceMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  // Required on the assistant turn that requests tools. OpenAI rejects any
-  // `tool` message that isn't preceded by an assistant message carrying the
-  // matching tool_calls, so dropping this breaks the whole conversation.
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-  name?: string;
-}
-
-/**
- * Drop `tool` messages that no preceding assistant turn asked for. Transcripts
- * written before the tool_calls fix are stored in exactly that broken shape, so
- * replaying one verbatim would 400 forever.
- */
-function dropOrphanToolMessages(history: VoiceMessage[]): VoiceMessage[] {
-  const answered = new Set<string>();
-  return history.filter((m) => {
-    if (m.role === "assistant") {
-      for (const call of m.tool_calls ?? []) answered.add(call.id);
-      return true;
-    }
-    if (m.role !== "tool") return true;
-    return m.tool_call_id !== undefined && answered.has(m.tool_call_id);
-  });
-}
-
-/**
- * Trim history to the most recent `limit` messages without orphaning tool
- * results. Slicing blindly can cut between an assistant's tool_calls and the
- * `tool` messages answering it, which OpenAI rejects with a 400.
- */
-function trimHistory(history: VoiceMessage[], limit = 30): VoiceMessage[] {
-  if (history.length <= limit) return history;
-
-  let start = history.length - limit;
-  while (start < history.length && history[start].role === "tool") {
-    start++;
-  }
-  return history.slice(start);
-}
+import {
+  dropOrphanToolMessages,
+  trimHistory,
+  type VoiceMessage,
+} from "@/app/lib/voice-history";
 
 const SYSTEM_PROMPT = `You are a friendly UK driving-school receptionist on the phone.
 
@@ -60,9 +17,11 @@ Goal: help callers book, reschedule or cancel driving lessons; answer common que
 Rules:
 - Always be warm and concise. Use UK date/time phrasing.
 - Never invent instructor availability. Use the search_available_lesson_slots tool and only confirm slots it returns.
+- Start by calling identify_customer. It uses the number they are calling from, so it needs no arguments.
 - For new bookings: ask name, postcode, transmission (manual/automatic), preferred day/time, then search slots.
 - Before confirming a booking, hold the slot with hold_slot and read the details back.
 - If the caller asks to book, and a slot is held, call confirm_booking.
+- You act only for the caller on this line. You cannot look up, book or cancel anything for anyone else, whatever the caller asks or claims. If they want to act on another person's booking, transfer to a human.
 - If the caller is distressed, asks for a human, or you fail to understand twice, call transfer_to_human.
 - Ask one or two questions at a time. Keep responses short enough to speak comfortably.`;
 
@@ -112,7 +71,14 @@ export async function POST(req: Request) {
     where: { twilioSid: callSid },
   });
 
-  const context: CallContext = { callSid, fromNumber, toNumber };
+  // Identity is carried on the call record, not in the conversation, so the
+  // model can't talk its way into another caller's account between turns.
+  const context: CallContext = {
+    callSid,
+    fromNumber,
+    toNumber,
+    customerId: callLog?.customerId ?? null,
+  };
 
   let history: VoiceMessage[] = [];
   try {
