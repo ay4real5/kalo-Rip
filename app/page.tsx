@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Car,
   Calendar,
+  Phone,
+  Star,
 } from "lucide-react";
 
 const features = [
@@ -48,6 +50,48 @@ const features = [
     title: "Instructor portal",
     description:
       "Instructors manage their own weekly hours, leave and service areas without back-and-forth calls.",
+  },
+];
+
+const steps = [
+  {
+    number: "01",
+    icon: Phone,
+    title: "A call comes in",
+    description: "The AI answers your Twilio number with a friendly, professional greeting any time of day.",
+  },
+  {
+    number: "02",
+    icon: Bot,
+    title: "AI understands the request",
+    description: "It asks the right questions, checks instructor availability and only confirms real slots.",
+  },
+  {
+    number: "03",
+    icon: CalendarCheck,
+    title: "Lesson is booked",
+    description: "The slot is held, the booking is confirmed and details are saved in your dashboard.",
+  },
+  {
+    number: "04",
+    icon: MessageSquareText,
+    title: "Confirmation sent",
+    description: "The learner gets an SMS confirmation and reminder so they never miss a lesson.",
+  },
+];
+
+const testimonials = [
+  {
+    quote: "We stopped losing enquiries to missed calls. The AI books lessons while we are out teaching.",
+    author: "Sarah, London Driving School",
+  },
+  {
+    quote: "Parents and learners love booking online at 10pm. Our admin time has dropped by half.",
+    author: "Mark, Drive Right Academy",
+  },
+  {
+    quote: "Instructors can update their own hours. No more WhatsApp groups chasing availability.",
+    author: "Priya, Pass First Go",
   },
 ];
 
@@ -185,6 +229,59 @@ export default function Home() {
                   <CardTitle>{feature.title}</CardTitle>
                 </CardHeader>
                 <CardDescription>{feature.description}</CardDescription>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="bg-slate-900 px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-12 text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+              How it works
+            </h2>
+            <p className="mt-4 text-lg text-slate-300">
+              Four simple steps from phone call to confirmed lesson.
+            </p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {steps.map((step) => (
+              <div key={step.number} className="relative rounded-2xl border border-slate-700 bg-slate-800/50 p-6">
+                <div className="text-4xl font-bold text-slate-700">{step.number}</div>
+                <div className="mt-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <step.icon size={24} />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-white">{step.title}</h3>
+                <p className="mt-2 text-sm text-slate-400">{step.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-12 text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              Loved by driving schools
+            </h2>
+            <p className="mt-4 text-lg text-slate-600">
+              See how schools are using Kalo Rip to grow.
+            </p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {testimonials.map((t) => (
+              <Card key={t.author} padding="lg" className="relative">
+                <div className="flex gap-1 text-amber-400">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} size={16} fill="currentColor" />
+                  ))}
+                </div>
+                <p className="mt-4 text-slate-700">&ldquo;{t.quote}&rdquo;</p>
+                <p className="mt-4 text-sm font-semibold text-slate-900">{t.author}</p>
               </Card>
             ))}
           </div>
