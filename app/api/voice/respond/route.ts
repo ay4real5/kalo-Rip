@@ -4,11 +4,53 @@ import { getHandoffNumber } from "@/app/lib/settings";
 import { verifyTwilioSignature } from "@/app/lib/twilio-verify";
 import { executeTool, getToolDefinitions, type CallContext } from "@/app/lib/voice-tools";
 
+interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 interface VoiceMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  // Required on the assistant turn that requests tools. OpenAI rejects any
+  // `tool` message that isn't preceded by an assistant message carrying the
+  // matching tool_calls, so dropping this breaks the whole conversation.
+  tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
+}
+
+/**
+ * Drop `tool` messages that no preceding assistant turn asked for. Transcripts
+ * written before the tool_calls fix are stored in exactly that broken shape, so
+ * replaying one verbatim would 400 forever.
+ */
+function dropOrphanToolMessages(history: VoiceMessage[]): VoiceMessage[] {
+  const answered = new Set<string>();
+  return history.filter((m) => {
+    if (m.role === "assistant") {
+      for (const call of m.tool_calls ?? []) answered.add(call.id);
+      return true;
+    }
+    if (m.role !== "tool") return true;
+    return m.tool_call_id !== undefined && answered.has(m.tool_call_id);
+  });
+}
+
+/**
+ * Trim history to the most recent `limit` messages without orphaning tool
+ * results. Slicing blindly can cut between an assistant's tool_calls and the
+ * `tool` messages answering it, which OpenAI rejects with a 400.
+ */
+function trimHistory(history: VoiceMessage[], limit = 30): VoiceMessage[] {
+  if (history.length <= limit) return history;
+
+  let start = history.length - limit;
+  while (start < history.length && history[start].role === "tool") {
+    start++;
+  }
+  return history.slice(start);
 }
 
 const SYSTEM_PROMPT = `You are a friendly UK driving-school receptionist on the phone.
@@ -74,7 +116,9 @@ export async function POST(req: Request) {
 
   let history: VoiceMessage[] = [];
   try {
-    history = JSON.parse(callLog?.transcript ?? "[]") as VoiceMessage[];
+    history = dropOrphanToolMessages(
+      JSON.parse(callLog?.transcript ?? "[]") as VoiceMessage[]
+    );
   } catch {
     history = [];
   }
@@ -133,15 +177,34 @@ export async function POST(req: Request) {
     let assistantText = message?.content ?? "";
 
     if (message?.tool_calls && message.tool_calls.length > 0) {
+      // Echo the tool_calls back verbatim. Without them the `tool` messages
+      // below are orphaned and OpenAI 400s, which sent every tool-using call
+      // down the catch block and straight to a human transfer.
       history.push({
         role: "assistant",
-        content: assistantText || "Calling tool...",
-        tool_call_id: undefined,
+        content: assistantText,
+        tool_calls: message.tool_calls.map((t) => ({
+          id: t.id,
+          type: "function" as const,
+          function: t.function,
+        })),
       });
 
       for (const toolCall of message.tool_calls) {
-        const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
-        const result = await executeTool(toolCall.function.name, args, context);
+        let result: unknown;
+        try {
+          const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+          result = await executeTool(toolCall.function.name, args, context);
+        } catch (toolError) {
+          // Report the failure back to the model rather than throwing: one bad
+          // tool call shouldn't drop a caller who is mid-booking. Every
+          // tool_call still needs a matching reply or the next request 400s.
+          console.error("Voice tool failed:", toolCall.function.name, toolError);
+          result = {
+            error:
+              toolError instanceof Error ? toolError.message : "Tool call failed",
+          };
+        }
 
         history.push({
           role: "tool",
@@ -179,15 +242,15 @@ export async function POST(req: Request) {
     await prisma.callLog.updateMany({
       where: { twilioSid: callSid },
       data: {
-        transcript: JSON.stringify(history.slice(-30)),
+        transcript: JSON.stringify(trimHistory(history)),
         summary: assistantText.slice(0, 500),
       },
     });
 
-    const isTransfer = history.some(
-      (m) =>
-        m.role === "tool" &&
-        (m.name === "transfer_to_human" || m.content.includes('"action":"TRANSFER"'))
+    // Only look at this turn's tool results. Scanning the whole history meant
+    // a transfer requested earlier in the call kept re-triggering.
+    const isTransfer = (message?.tool_calls ?? []).some(
+      (t) => t.function.name === "transfer_to_human"
     );
 
     const twiml = buildTwiML(
