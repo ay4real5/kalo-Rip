@@ -102,6 +102,8 @@ export default function AdminDashboard() {
     { id: "overview", label: "Overview" },
     { id: "bookings", label: "Bookings" },
     { id: "calendar", label: "Calendar", href: "/admin/calendar" },
+    { id: "customers", label: "Customers", href: "/admin/customers" },
+    { id: "analytics", label: "Analytics", href: "/admin/analytics" },
     { id: "instructors", label: "Instructors" },
     { id: "calls", label: "Calls" },
     { id: "settings", label: "Settings" },
