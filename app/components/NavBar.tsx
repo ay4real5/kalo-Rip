@@ -1,12 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { Phone, LayoutDashboard, CalendarDays, Menu, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Phone, LayoutDashboard, CalendarDays, Menu, X, User, LogOut } from "lucide-react";
 import { Button } from "@/app/components/ui/Button";
-import { useState } from "react";
+import { createClient } from "@/app/lib/supabase/client";
+
+interface UserProfile {
+  email?: string;
+  name?: string | null;
+  role?: string;
+}
 
 export function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setUser({
+          email: user.email,
+          name: user.user_metadata?.name,
+          role: user.user_metadata?.role,
+        });
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  }
 
   const links = [
     { href: "/admin", icon: LayoutDashboard, label: "Admin" },
@@ -36,10 +65,41 @@ export function NavBar() {
           ))}
         </nav>
 
-        <div className="hidden md:block">
-          <Button href="/admin" size="sm" variant="primary">
-            Open dashboard
-          </Button>
+        <div className="hidden items-center gap-3 md:flex">
+          {!loading && (
+            user ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+                  <User size={14} />
+                  <span className="max-w-[120px] truncate">{user.name ?? user.email}</span>
+                  {user.role && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 capitalize">
+                      {user.role}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <LogOut size={16} />
+                  Log out
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                >
+                  Sign in
+                </Link>
+                <Button href="/register" size="sm" variant="primary">
+                  Get started
+                </Button>
+              </>
+            )
+          )}
         </div>
 
         <button
@@ -64,9 +124,27 @@ export function NavBar() {
                 {link.label}
               </Link>
             ))}
-            <Button href="/admin" size="sm" variant="primary" className="mt-2">
-              Open dashboard
-            </Button>
+            {user ? (
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  handleLogout();
+                }}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                <LogOut size={16} />
+                Log out
+              </button>
+            ) : (
+              <>
+                <Link href="/login" className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+                  Sign in
+                </Link>
+                <Button href="/register" size="sm" variant="primary" className="mt-2">
+                  Get started
+                </Button>
+              </>
+            )}
           </nav>
         </div>
       )}
