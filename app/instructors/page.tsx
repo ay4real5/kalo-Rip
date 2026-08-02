@@ -4,7 +4,17 @@ import { useEffect, useState } from "react";
 import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { Badge } from "@/app/components/ui/Badge";
-import { Car, MapPin, PoundSterling, Clock, User, Zap } from "lucide-react";
+import { Car, MapPin, PoundSterling, Clock, User, Zap, Star } from "lucide-react";
+
+interface Review {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  booking: {
+    customer: { user: { name: string | null } };
+  };
+}
 
 interface PublicInstructor {
   id: string;
@@ -21,16 +31,31 @@ interface PublicInstructor {
 
 export default function InstructorsPage() {
   const [instructors, setInstructors] = useState<PublicInstructor[]>([]);
+  const [reviews, setReviews] = useState<Record<string, Review[]>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/instructors/public")
       .then((r) => r.json())
-      .then((data) => {
+      .then(async (data) => {
         setInstructors(data);
         setLoading(false);
+        // Fetch reviews for each instructor in parallel
+        const reviewFetches = data.map(async (instructor: PublicInstructor) => {
+          const res = await fetch(`/api/reviews?instructorId=${instructor.id}`);
+          const r = await res.json();
+          return [instructor.id, r] as const;
+        });
+        const entries = await Promise.all(reviewFetches);
+        setReviews(Object.fromEntries(entries));
       });
   }, []);
+
+  function avgRating(instructorId: string): number | null {
+    const r = reviews[instructorId];
+    if (!r || r.length === 0) return null;
+    return r.reduce((sum, x) => sum + x.rating, 0) / r.length;
+  }
 
   if (loading) {
     return (
@@ -104,14 +129,49 @@ export default function InstructorsPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {instructor.servicePostcodes.slice(0, 5).map((p) => (
-                    <Badge key={p} variant="neutral">{p}</Badge>
-                  ))}
-                  {instructor.offersIntensive && (
-                    <Badge variant="primary"><Zap size={12} className="mr-1" /> Intensive</Badge>
-                  )}
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <MapPin size={12} /> Service area
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {instructor.servicePostcodes.slice(0, 8).map((p) => (
+                      <Badge key={p} variant="neutral">{p}</Badge>
+                    ))}
+                    {instructor.servicePostcodes.length > 8 && (
+                      <Badge variant="neutral">+{instructor.servicePostcodes.length - 8} more</Badge>
+                    )}
+                    {instructor.offersIntensive && (
+                      <Badge variant="primary"><Zap size={12} className="mr-1" /> Intensive</Badge>
+                    )}
+                  </div>
                 </div>
+
+                {avgRating(instructor.id) !== null && (
+                  <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-700">
+                    <div className="flex items-center gap-2">
+                      <div className="flex">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star
+                            key={n}
+                            size={16}
+                            className={n <= Math.round(avgRating(instructor.id)!) ? "fill-amber-400 text-amber-400" : "text-slate-300 dark:text-slate-600"}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        {avgRating(instructor.id)!.toFixed(1)}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        ({reviews[instructor.id].length} review{reviews[instructor.id].length !== 1 ? "s" : ""})
+                      </span>
+                    </div>
+                    {reviews[instructor.id].slice(0, 1).map((r) => (
+                      <p key={r.id} className="mt-2 text-sm italic text-slate-500 dark:text-slate-400">
+                        &ldquo;{r.comment}&rdquo; — {r.booking.customer.user.name ?? "Anonymous"}
+                      </p>
+                    ))}
+                  </div>
+                )}
 
                 <Button href={`/book?instructor=${instructor.id}`} className="mt-6 w-full" variant="primary">
                   Book with {instructor.user.name?.split(" ")[0] ?? "this instructor"}

@@ -5,7 +5,7 @@ import { Card } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { Badge } from "@/app/components/ui/Badge";
 import { useToast } from "@/app/components/ToastProvider";
-import { CalendarDays, Clock, User, XCircle, Loader2 } from "lucide-react";
+import { CalendarDays, Clock, User, XCircle, Loader2, Mail, MapPin, Search } from "lucide-react";
 
 interface MyBooking {
   id: string;
@@ -19,27 +19,56 @@ interface MyBooking {
 
 export default function MyBookingsPage() {
   const { showToast } = useToast();
-  const [bookings, setBookings] = useState<MyBooking[]>([]);
+  const [authedBookings, setAuthedBookings] = useState<MyBooking[] | null>(null);
+  const [lookupBookings, setLookupBookings] = useState<MyBooking[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
+    // Try to load authed bookings first
     fetch("/api/me/bookings")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data) => {
-        setBookings(data);
+        setAuthedBookings(data);
+        setLoading(false);
+      })
+      .catch(() => {
         setLoading(false);
       });
   }, []);
 
-  async function cancelBooking(id: string) {
+  async function handleLookup(e: React.FormEvent) {
+    e.preventDefault();
+    setSearching(true);
+    const res = await fetch("/api/bookings/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, postcode }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setLookupBookings(data.bookings);
+      if (data.bookings.length === 0) {
+        showToast("No bookings found for those details", "info");
+      }
+    } else {
+      showToast("Lookup failed", "error");
+    }
+    setSearching(false);
+  }
+
+  async function cancelBooking(id: string, list: "authed" | "lookup") {
     if (!confirm("Cancel this booking?")) return;
     setCancellingId(id);
     const res = await fetch(`/api/bookings/${id}`, { method: "DELETE" });
     if (res.ok) {
-      setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: "CANCELLED" } : b))
-      );
+      const updater = (prev: MyBooking[] | null) =>
+        prev ? prev.map((b) => (b.id === id ? { ...b, status: "CANCELLED" } : b)) : prev;
+      if (list === "authed") setAuthedBookings((p) => updater(p));
+      else setLookupBookings((p) => updater(p));
       showToast("Booking cancelled", "success");
     } else {
       showToast("Failed to cancel booking", "error");
@@ -62,50 +91,127 @@ export default function MyBookingsPage() {
     );
   }
 
+  // If authed, show their bookings
+  if (authedBookings) {
+    return (
+      <BookingsList
+        bookings={authedBookings}
+        onCancel={(id) => cancelBooking(id, "authed")}
+        cancellingId={cancellingId}
+      />
+    );
+  }
+
+  // Otherwise show lookup form + results
+  return (
+    <div className="px-6 py-12">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Find your bookings</h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
+            Enter the email and postcode you used when booking to view your lessons.
+          </p>
+        </div>
+
+        <Card padding="lg" className="mb-8">
+          <form onSubmit={handleLookup} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  <Mail size={12} /> Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  <MapPin size={12} /> Postcode
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={postcode}
+                  onChange={(e) => setPostcode(e.target.value)}
+                  placeholder="SW1A 1AA"
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+            </div>
+            <Button type="submit" className="w-full" disabled={searching} icon={searching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}>
+              {searching ? "Searching..." : "Find my bookings"}
+            </Button>
+          </form>
+        </Card>
+
+        {lookupBookings && (
+          <BookingsList
+            bookings={lookupBookings}
+            onCancel={(id) => cancelBooking(id, "lookup")}
+            cancellingId={cancellingId}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BookingsList({
+  bookings,
+  onCancel,
+  cancellingId,
+}: {
+  bookings: MyBooking[];
+  onCancel: (id: string) => void;
+  cancellingId: string | null;
+}) {
   const now = new Date();
   const upcoming = bookings.filter((b) => new Date(b.startsAt) >= now && b.status === "CONFIRMED");
   const past = bookings.filter((b) => new Date(b.startsAt) < now || b.status !== "CONFIRMED");
 
   return (
-    <div className="px-6 py-12">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">My bookings</h1>
-          <p className="mt-2 text-slate-600 dark:text-slate-400">View and cancel your driving lessons.</p>
-        </div>
-
-        {upcoming.length === 0 && past.length === 0 ? (
-          <Card padding="lg" className="text-center">
-            <CalendarDays size={40} className="mx-auto text-slate-300" />
-            <p className="mt-4 text-slate-500 dark:text-slate-400">You have no bookings yet.</p>
-            <Button href="/book" className="mt-6" variant="primary">Book a lesson</Button>
-          </Card>
-        ) : (
-          <div className="space-y-8">
-            {upcoming.length > 0 && (
-              <div>
-                <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">Upcoming</h2>
-                <div className="space-y-3">
-                  {upcoming.map((b) => (
-                    <BookingCard key={b.id} booking={b} onCancel={cancelBooking} cancelling={cancellingId === b.id} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {past.length > 0 && (
-              <div>
-                <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">Past</h2>
-                <div className="space-y-3">
-                  {past.slice(0, 20).map((b) => (
-                    <BookingCard key={b.id} booking={b} onCancel={cancelBooking} cancelling={cancellingId === b.id} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">My bookings</h1>
+        <p className="mt-2 text-slate-600 dark:text-slate-400">View and cancel your driving lessons.</p>
       </div>
+
+      {upcoming.length === 0 && past.length === 0 ? (
+        <Card padding="lg" className="text-center">
+          <CalendarDays size={40} className="mx-auto text-slate-300" />
+          <p className="mt-4 text-slate-500 dark:text-slate-400">You have no bookings yet.</p>
+          <Button href="/book" className="mt-6" variant="primary">Book a lesson</Button>
+        </Card>
+      ) : (
+        <>
+          {upcoming.length > 0 && (
+            <div>
+              <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">Upcoming</h2>
+              <div className="space-y-3">
+                {upcoming.map((b) => (
+                  <BookingCard key={b.id} booking={b} onCancel={onCancel} cancelling={cancellingId === b.id} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {past.length > 0 && (
+            <div>
+              <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">Past</h2>
+              <div className="space-y-3">
+                {past.slice(0, 20).map((b) => (
+                  <BookingCard key={b.id} booking={b} onCancel={onCancel} cancelling={cancellingId === b.id} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -143,7 +249,7 @@ function BookingCard({
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Badge variant={booking.status === "CONFIRMED" ? "success" : "neutral"} dot>
+          <Badge variant={booking.status === "CONFIRMED" ? "success" : booking.status === "COMPLETED" ? "primary" : "neutral"} dot>
             {booking.status}
           </Badge>
           {!isPast && (

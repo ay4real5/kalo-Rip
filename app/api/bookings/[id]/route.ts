@@ -30,8 +30,10 @@ export async function DELETE(
 }
 
 const rescheduleSchema = z.object({
-  startsAt: z.string(),
+  startsAt: z.string().optional(),
   endsAt: z.string().optional(),
+  status: z.enum(["CONFIRMED", "COMPLETED", "CANCELLED"]).optional(),
+  instructorNotes: z.string().optional(),
 });
 
 export async function PATCH(
@@ -52,31 +54,39 @@ export async function PATCH(
     if (!existing) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
-    if (existing.status === "CANCELLED") {
-      return NextResponse.json({ error: "Cannot reschedule a cancelled booking" }, { status: 400 });
+    if (existing.status === "CANCELLED" && parsed.status !== "CANCELLED") {
+      return NextResponse.json({ error: "Cannot modify a cancelled booking" }, { status: 400 });
     }
 
-    const startsAt = new Date(parsed.startsAt);
-    const endsAt = parsed.endsAt ? new Date(parsed.endsAt) : new Date(startsAt.getTime() + existing.endsAt.getTime() - existing.startsAt.getTime());
+    const update: Record<string, unknown> = {};
+    if (parsed.startsAt) update.startsAt = new Date(parsed.startsAt);
+    if (parsed.endsAt) update.endsAt = new Date(parsed.endsAt);
+    if (parsed.status) update.status = parsed.status;
+    if (parsed.instructorNotes !== undefined) update.notes = parsed.instructorNotes;
 
-    // Check for conflicts (excluding this booking)
-    const conflict = await prisma.booking.findFirst({
-      where: {
-        id: { not: id },
-        instructorId: existing.instructorId,
-        status: "CONFIRMED",
-        OR: [
-          { startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
-        ],
-      },
-    });
-    if (conflict) {
-      return NextResponse.json({ error: "Instructor has another booking at that time" }, { status: 409 });
+    if (parsed.startsAt) {
+      const startsAt = parsed.startsAt ? new Date(parsed.startsAt) : existing.startsAt;
+      const endsAt = parsed.endsAt ? new Date(parsed.endsAt) : new Date(startsAt.getTime() + existing.endsAt.getTime() - existing.startsAt.getTime());
+
+      // Check for conflicts (excluding this booking)
+      const conflict = await prisma.booking.findFirst({
+        where: {
+          id: { not: id },
+          instructorId: existing.instructorId,
+          status: "CONFIRMED",
+          OR: [
+            { startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+          ],
+        },
+      });
+      if (conflict) {
+        return NextResponse.json({ error: "Instructor has another booking at that time" }, { status: 409 });
+      }
     }
 
     const updated = await prisma.booking.update({
       where: { id },
-      data: { startsAt, endsAt },
+      data: update,
       include: {
         customer: { include: { user: true } },
         instructor: { include: { user: true } },
@@ -88,9 +98,9 @@ export async function PATCH(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors }, { status: 400 });
     }
-    console.error("Reschedule booking error:", error);
+    console.error("Update booking error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to reschedule booking" },
+      { error: error instanceof Error ? error.message : "Failed to update booking" },
       { status: 500 }
     );
   }

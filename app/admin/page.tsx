@@ -14,12 +14,14 @@ import {
   Plus,
   XCircle,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Badge } from "@/app/components/ui/Badge";
 import { Button } from "@/app/components/ui/Button";
 import { useToast } from "@/app/components/ToastProvider";
+import { Skeleton, SkeletonCard, SkeletonStat } from "@/app/components/ui/Skeleton";
 import { cn } from "@/app/lib/cn";
 
 interface Booking {
@@ -71,6 +73,8 @@ export default function AdminDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  const [bookingsPage, setBookingsPage] = useState(1);
+  const [bookingsTotalPages, setBookingsTotalPages] = useState(1);
   const [tab, setTab] = useState<"overview" | "bookings" | "instructors" | "calls" | "settings" | "calendar">("overview");
   const [loading, setLoading] = useState(true);
   const [handoffNumber, setHandoffNumber] = useState("");
@@ -124,20 +128,37 @@ export default function AdminDashboard() {
     }
   }
 
+  async function completeBooking(id: string) {
+    const res = await fetch(`/api/bookings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "COMPLETED" }),
+    });
+    if (res.ok) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, status: "COMPLETED" } : b))
+      );
+      showToast("Lesson marked complete", "success");
+    } else {
+      showToast("Failed to mark complete", "error");
+    }
+  }
+
   useEffect(() => {
     Promise.all([
-      fetch("/api/bookings").then((r) => r.json()),
+      fetch(`/api/bookings?page=${bookingsPage}`).then((r) => r.json()),
       fetch("/api/instructors").then((r) => r.json()),
       fetch("/api/calls").then((r) => r.json()),
       fetch("/api/settings?key=human_handoff_number").then((r) => r.json()),
     ]).then(([b, i, c, s]) => {
-      setBookings(b);
+      setBookings(Array.isArray(b) ? b : b.items ?? []);
+      setBookingsTotalPages(b.totalPages ?? 1);
       setInstructors(Array.isArray(i) ? i : i.items ?? []);
       setCalls(c);
       setHandoffNumber((s as { value: string | null }).value ?? "");
       setLoading(false);
     });
-  }, []);
+  }, [bookingsPage]);
 
   const tabs = [
     { id: "overview", label: "Overview" },
@@ -145,7 +166,7 @@ export default function AdminDashboard() {
     { id: "calendar", label: "Calendar", href: "/admin/calendar" },
     { id: "customers", label: "Customers", href: "/admin/customers" },
     { id: "analytics", label: "Analytics", href: "/admin/analytics" },
-    { id: "instructors", label: "Instructors" },
+    { id: "instructors", label: "Instructors", href: "/admin/instructors" },
     { id: "calls", label: "Calls" },
     { id: "settings", label: "Settings" },
   ] as const;
@@ -185,11 +206,14 @@ export default function AdminDashboard() {
     return (
       <div className="px-6 py-12">
         <div className="mx-auto max-w-6xl">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-200" />
+          <Skeleton className="h-8 w-48" />
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-200" />
+              <SkeletonStat key={i} />
             ))}
+          </div>
+          <div className="mt-8">
+            <SkeletonCard lines={6} />
           </div>
         </div>
       </div>
@@ -313,6 +337,15 @@ export default function AdminDashboard() {
                           <td className="px-6 py-4">
                             {b.status !== "CANCELLED" && (
                               <div className="flex items-center gap-3">
+                                {b.status === "CONFIRMED" && (
+                                  <button
+                                    onClick={() => completeBooking(b.id)}
+                                    className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                                  >
+                                    <CheckCircle2 size={14} />
+                                    Complete
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => startReschedule(b.id, b.startsAt)}
                                   className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:text-emerald-700"
@@ -334,6 +367,29 @@ export default function AdminDashboard() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {bookingsTotalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 dark:border-slate-700">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Page {bookingsPage} of {bookingsTotalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setBookingsPage((p) => Math.max(1, p - 1))}
+                      disabled={bookingsPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setBookingsPage((p) => Math.min(bookingsTotalPages, p + 1))}
+                      disabled={bookingsPage === bookingsTotalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </Card>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/app/lib/supabase/client";
 import { Button } from "@/app/components/ui/Button";
 import { Card } from "@/app/components/ui/Card";
-import { Mail, Lock, User, Loader2 } from "lucide-react";
+import { Mail, Lock, User, Loader2, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 
 export default function RegisterPage() {
@@ -14,6 +14,7 @@ export default function RegisterPage() {
   const [role, setRole] = useState<"instructor" | "admin">("instructor");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,7 +25,10 @@ export default function RegisterPage() {
     const { error, data } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name, role } },
+      options: {
+        data: { name, role },
+        emailRedirectTo: `${window.location.origin}/admin`,
+      },
     });
 
     if (error) {
@@ -47,6 +51,13 @@ export default function RegisterPage() {
       });
     }
 
+    // If email confirmation is required, show a notice
+    if (!data.session && data.user) {
+      setSent(true);
+      setLoading(false);
+      return;
+    }
+
     window.location.href = "/admin";
   }
 
@@ -59,6 +70,20 @@ export default function RegisterPage() {
         </div>
 
         <Card padding="lg">
+          {sent ? (
+            <div className="text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900">
+                <CheckCircle2 size={32} />
+              </div>
+              <p className="mt-4 font-semibold text-slate-900 dark:text-slate-100">Check your email</p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                We sent a confirmation link to {email}. Click it to verify your account.
+              </p>
+              <Link href="/login" className="mt-6 inline-block text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400">
+                Back to sign in
+              </Link>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
@@ -152,6 +177,7 @@ export default function RegisterPage() {
               {loading ? "Creating account..." : "Create account"}
             </Button>
           </form>
+          )}
 
           <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
             Already have an account?{" "}

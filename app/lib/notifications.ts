@@ -54,9 +54,10 @@ export async function sendBookingConfirmation(opts: {
     `Reply STOP to opt out of messages.`;
 
   const phone = opts.customer.user?.phone ?? "";
-  const sent = await sendSms(phone, message);
+  const smsOptIn = (opts.customer as { smsOptIn?: boolean }).smsOptIn !== false;
+  const sent = smsOptIn ? await sendSms(phone, message) : false;
 
-  return { sent, channel: phone ? "sms" : "none" };
+  return { sent, channel: phone && smsOptIn ? "sms" : "none" };
 }
 
 export async function sendLessonReminder(opts: {
@@ -69,6 +70,8 @@ export async function sendLessonReminder(opts: {
     `tomorrow at ${formatBookingTime(opts.booking.startsAt)}.`;
 
   const phone = opts.customer.user?.phone ?? "";
+  const smsOptIn = (opts.customer as { smsOptIn?: boolean }).smsOptIn !== false;
+  if (!smsOptIn) return { sent: false };
   return { sent: await sendSms(phone, message) };
 }
 

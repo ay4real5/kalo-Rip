@@ -4,6 +4,7 @@ import { createBooking } from "@/app/lib/booking-engine";
 import { sendEmail, bookingConfirmationHtml } from "@/app/lib/email";
 import { sendBookingConfirmation } from "@/app/lib/notifications";
 import { rateLimit, getClientIp } from "@/app/lib/rate-limit";
+import { requireUser } from "@/app/lib/auth/server";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -20,15 +21,41 @@ const createSchema = z.object({
   source: z.enum(["PHONE_AI", "PORTAL", "ADMIN"]).default("PORTAL"),
 });
 
-export async function GET() {
-  const bookings = await prisma.booking.findMany({
-    include: {
-      customer: { include: { user: true } },
-      instructor: { include: { user: true } },
-    },
-    orderBy: { startsAt: "desc" },
-  });
-  return NextResponse.json(bookings);
+export async function GET(request: Request) {
+  try {
+    await requireUser();
+    const url = new URL(request.url);
+    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
+    const status = url.searchParams.get("status") ?? "";
+    const pageSize = 50;
+
+    const where = status ? { status: status as "CONFIRMED" | "COMPLETED" | "CANCELLED" } : {};
+
+    const [bookings, total] = await Promise.all([
+      prisma.booking.findMany({
+        where,
+        include: {
+          customer: { include: { user: true } },
+          instructor: { include: { user: true } },
+        },
+        orderBy: { startsAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.booking.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      items: bookings,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    });
+  } catch (error) {
+    console.error("Get bookings error:", error);
+    return NextResponse.json({ error: "Failed to fetch bookings" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

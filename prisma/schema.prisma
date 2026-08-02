@@ -38,6 +38,8 @@ model Customer {
   preferredDays   Int[]    @map("preferred_days")
   preferredTimes  String?  @map("preferred_times")
   notes           String?
+  smsOptIn        Boolean  @default(true) @map("sms_opt_in")
+  emailOptIn      Boolean  @default(true) @map("email_opt_in")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -85,6 +87,7 @@ model Instructor {
   blackoutDates     BlackoutDate[]
   bookings          Booking[]
   scheduleOverrides ScheduleOverride[]
+  reviews           Review[]
 
   @@map("instructors")
 }
@@ -146,6 +149,7 @@ model Booking {
   cancellationReason String?  @map("cancellation_reason")
   paidAt        DateTime?     @map("paid_at")
   paymentReference String?    @map("payment_reference")
+  review        Review?
 
   @@map("bookings")
 }
@@ -217,4 +221,38 @@ model Setting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("settings")
+}
+
+model Review {
+  id           String   @id @default(cuid())
+  bookingId    String   @unique @map("booking_id")
+  booking      Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  instructorId String   @map("instructor_id")
+  instructor   Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  rating       Int
+  comment      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("reviews")
+}
+
+enum LessonPackageType {
+  SINGLE
+  BLOCK_5
+  BLOCK_10
+  INTENSIVE
+}
+
+model LessonPackage {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  type          LessonPackageType @default(SINGLE)
+  lessonCount   Int      @default(1)
+  pricePence    Int      @map("price_pence")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("lesson_packages")
 }

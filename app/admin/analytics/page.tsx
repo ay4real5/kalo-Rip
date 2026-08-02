@@ -6,6 +6,7 @@ import { Card } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { Badge } from "@/app/components/ui/Badge";
 import { ArrowLeft, TrendingUp, CalendarDays, PoundSterling, Bot, Car, Phone } from "lucide-react";
+import { Skeleton, SkeletonCard, SkeletonStat } from "@/app/components/ui/Skeleton";
 
 interface Booking {
   id: string;
@@ -34,9 +35,16 @@ export default function AnalyticsPage() {
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState("");
+  const [appliedTo, setAppliedTo] = useState("");
 
   useEffect(() => {
-    fetch("/api/analytics")
+    const params = new URLSearchParams();
+    if (appliedFrom) params.set("from", appliedFrom);
+    if (appliedTo) params.set("to", appliedTo);
+    fetch(`/api/analytics?${params.toString()}`)
       .then((r) => r.json())
       .then((data) => {
         setBookings(data.bookings ?? []);
@@ -44,7 +52,19 @@ export default function AnalyticsPage() {
         setCalls(data.calls ?? []);
         setLoading(false);
       });
-  }, []);
+  }, [appliedFrom, appliedTo]);
+
+  function applyDateRange() {
+    setAppliedFrom(from ? new Date(from).toISOString() : "");
+    setAppliedTo(to ? new Date(to + "T23:59:59").toISOString() : "");
+  }
+
+  function clearDateRange() {
+    setFrom("");
+    setTo("");
+    setAppliedFrom("");
+    setAppliedTo("");
+  }
 
   const stats = useMemo(() => {
     const confirmed = bookings.filter((b) => b.status === "CONFIRMED");
@@ -86,11 +106,15 @@ export default function AnalyticsPage() {
     return (
       <div className="px-6 py-12">
         <div className="mx-auto max-w-6xl">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-200" />
+          <Skeleton className="h-8 w-48" />
           <div className="mt-6 grid gap-4 sm:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-200" />
+              <SkeletonStat key={i} />
             ))}
+          </div>
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <SkeletonCard lines={5} />
+            <SkeletonCard lines={5} />
           </div>
         </div>
       </div>
@@ -105,10 +129,33 @@ export default function AnalyticsPage() {
         </Link>
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Analytics</h1>
-            <p className="text-slate-500">Key metrics for your driving school.</p>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Analytics</h1>
+            <p className="text-slate-500 dark:text-slate-400">Key metrics for your driving school.</p>
           </div>
-          <Button href="/admin/bookings/new" variant="primary">Create booking</Button>
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-500 dark:text-slate-400">From</label>
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="rounded-lg border-slate-200 bg-slate-50 p-2 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-500 dark:text-slate-400">To</label>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="rounded-lg border-slate-200 bg-slate-50 p-2 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </div>
+            <Button onClick={applyDateRange} variant="primary">Apply</Button>
+            {(appliedFrom || appliedTo) && (
+              <Button onClick={clearDateRange} variant="secondary">Clear</Button>
+            )}
+          </div>
         </div>
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
