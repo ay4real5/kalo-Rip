@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { Badge } from "@/app/components/ui/Badge";
+import { useToast } from "@/app/components/ToastProvider";
 import { ArrowLeft, Calendar, Clock, User, Mail, Phone, MapPin, Car, CheckCircle2, Loader2 } from "lucide-react";
 import Link from "next/link";
 
@@ -17,6 +18,7 @@ interface Slot {
 }
 
 export default function NewBookingPage() {
+  const { showToast } = useToast();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -62,8 +64,12 @@ export default function NewBookingPage() {
         source: "ADMIN",
       }),
     });
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setCreated(true);
+      showToast("Booking created successfully", "success");
+    } else {
+      showToast(data.error || "Failed to create booking", "error");
     }
     setCreating(false);
   }

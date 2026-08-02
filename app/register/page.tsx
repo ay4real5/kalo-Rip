@@ -54,14 +54,14 @@ export default function RegisterPage() {
     <div className="flex min-h-[calc(100vh-64px)] items-center justify-center px-6 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-slate-900">Create account</h1>
-          <p className="mt-2 text-slate-600">Get started with Kalo Rip.</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Create account</h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">Get started with Kalo Rip.</p>
         </div>
 
         <Card padding="lg">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Full name
               </label>
               <div className="relative">
@@ -72,13 +72,13 @@ export default function RegisterPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Jane Smith"
-                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Email address
               </label>
               <div className="relative">
@@ -89,13 +89,13 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="jane@example.com"
-                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Password
               </label>
               <div className="relative">
@@ -107,13 +107,13 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Account type
               </label>
               <div className="grid grid-cols-2 gap-3">
@@ -122,8 +122,8 @@ export default function RegisterPage() {
                   onClick={() => setRole("instructor")}
                   className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
                     role === "instructor"
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                   }`}
                 >
                   Instructor
@@ -133,8 +133,8 @@ export default function RegisterPage() {
                   onClick={() => setRole("admin")}
                   className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
                     role === "admin"
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      ? "border-emerald-600 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                   }`}
                 >
                   Admin
@@ -143,7 +143,7 @@ export default function RegisterPage() {
             </div>
 
             {error && (
-              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -153,9 +153,9 @@ export default function RegisterPage() {
             </Button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-slate-500">
+          <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
             Already have an account?{" "}
-            <Link href="/login" className="font-semibold text-emerald-600 hover:text-emerald-700">
+            <Link href="/login" className="font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400">
               Sign in
             </Link>
           </div>

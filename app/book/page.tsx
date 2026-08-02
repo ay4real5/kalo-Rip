@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { Badge } from "@/app/components/ui/Badge";
+import { useToast } from "@/app/components/ToastProvider";
 import { MapPin, Calendar, Clock, Car, User, Mail, Phone, CheckCircle2, Loader2 } from "lucide-react";
 
 interface Slot {
@@ -23,6 +24,7 @@ interface BookingResult {
 }
 
 export default function BookPage() {
+  const { showToast } = useToast();
   const [step, setStep] = useState<"details" | "slots" | "confirm">("details");
   const [form, setForm] = useState({
     name: "",
@@ -71,6 +73,9 @@ export default function BookPage() {
     if (res.ok) {
       setBooking(data);
       setStep("confirm");
+      showToast("Booking confirmed!", "success");
+    } else {
+      showToast(data.error || "Failed to create booking", "error");
     }
     setLoading(false);
   }
@@ -93,8 +98,8 @@ export default function BookPage() {
     <div className="px-6 py-12">
       <div className="mx-auto max-w-2xl">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-slate-900">Book a driving lesson</h1>
-          <p className="mt-2 text-slate-600">Find a local instructor and book online in seconds.</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Book a driving lesson</h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">Find a local instructor and book online in seconds.</p>
         </div>
 
         {step === "details" && (

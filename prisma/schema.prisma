@@ -144,6 +144,8 @@ model Booking {
   updatedAt     DateTime      @updatedAt @map("updated_at")
   cancelledAt   DateTime?     @map("cancelled_at")
   cancellationReason String?  @map("cancellation_reason")
+  paidAt        DateTime?     @map("paid_at")
+  paymentReference String?    @map("payment_reference")
 
   @@map("bookings")
 }

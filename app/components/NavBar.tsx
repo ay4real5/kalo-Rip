@@ -40,6 +40,7 @@ export function NavBar() {
 
   const links = [
     { href: "/book", icon: Calendar, label: "Book now" },
+    { href: "/instructors", icon: User, label: "Instructors" },
     { href: "/admin", icon: LayoutDashboard, label: "Admin" },
     { href: "/instructor", icon: CalendarDays, label: "Instructor" },
   ];

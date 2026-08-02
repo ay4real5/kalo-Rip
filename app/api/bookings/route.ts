@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { createBooking } from "@/app/lib/booking-engine";
+import { sendEmail, bookingConfirmationHtml } from "@/app/lib/email";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -59,6 +60,19 @@ export async function POST(request: Request) {
       notes: parsed.notes,
       source: parsed.source,
     });
+
+    // Fire and forget — do not block the response on email
+    sendEmail({
+      to: parsed.email,
+      subject: "Your driving lesson is booked",
+      html: bookingConfirmationHtml({
+        instructorName: booking.instructor.user.name ?? "Your instructor",
+        startsAt: booking.startsAt.toISOString(),
+        endsAt: booking.endsAt.toISOString(),
+        pricePence: booking.pricePence,
+        customerName: parsed.name,
+      }),
+    }).catch((err) => console.error("[bookings] email failed:", err));
 
     return NextResponse.json(booking, { status: 201 });
   } catch (error) {

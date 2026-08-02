@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
+import { useToast } from "@/app/components/ToastProvider";
 import { User, Save, Loader2, CheckCircle2 } from "lucide-react";
 
 interface Instructor {
@@ -30,6 +31,7 @@ interface ProfileEditorProps {
 }
 
 export function ProfileEditor({ instructor, onUpdate }: ProfileEditorProps) {
+  const { showToast } = useToast();
   const [profile, setProfile] = useState({ ...instructor });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -61,6 +63,9 @@ export function ProfileEditor({ instructor, onUpdate }: ProfileEditorProps) {
       onUpdate({ ...instructor, ...updated });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      showToast("Profile saved", "success");
+    } else {
+      showToast("Failed to save profile", "error");
     }
     setSaving(false);
   }

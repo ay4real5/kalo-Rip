@@ -35,14 +35,14 @@ export default function LoginPage() {
     <div className="flex min-h-[calc(100vh-64px)] items-center justify-center px-6 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-slate-900">Welcome back</h1>
-          <p className="mt-2 text-slate-600">Sign in to manage your driving school.</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Welcome back</h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">Sign in to manage your driving school.</p>
         </div>
 
         <Card padding="lg">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Email address
               </label>
               <div className="relative">
@@ -56,13 +56,13 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Password
               </label>
               <div className="relative">
@@ -76,12 +76,12 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -89,7 +89,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -99,9 +99,9 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-slate-500">
+          <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
             Don&apos;t have an account?{" "}
-            <Link href="/register" className="font-semibold text-emerald-600 hover:text-emerald-700">
+            <Link href="/register" className="font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400">
               Create one
             </Link>
           </div>

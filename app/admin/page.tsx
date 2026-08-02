@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Badge } from "@/app/components/ui/Badge";
 import { Button } from "@/app/components/ui/Button";
+import { useToast } from "@/app/components/ToastProvider";
 import { cn } from "@/app/lib/cn";
 
 interface Booking {
@@ -65,6 +66,7 @@ function formatTime(iso: string) {
 }
 
 export default function AdminDashboard() {
+  const { showToast } = useToast();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
@@ -80,6 +82,9 @@ export default function AdminDashboard() {
       setBookings((prev) =>
         prev.map((b) => (b.id === id ? { ...b, status: "CANCELLED" } : b))
       );
+      showToast("Booking cancelled", "success");
+    } else {
+      showToast("Failed to cancel booking", "error");
     }
   }
 
@@ -158,10 +163,10 @@ export default function AdminDashboard() {
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex items-end justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Admin dashboard</h1>
-            <p className="text-slate-500">Overview of bookings, instructors and calls.</p>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Admin dashboard</h1>
+            <p className="text-slate-500 dark:text-slate-400">Overview of bookings, instructors and calls.</p>
           </div>
           <Button href="/admin/bookings/new" icon={<Plus size={16} />}>Create booking</Button>
         </div>
@@ -432,12 +437,14 @@ export default function AdminDashboard() {
                 <Button
                   onClick={async () => {
                     setSavingHandoff(true);
-                    await fetch("/api/settings", {
+                    const res = await fetch("/api/settings", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ key: "human_handoff_number", value: handoffNumber }),
                     });
                     setSavingHandoff(false);
+                    if (res.ok) showToast("Handoff number saved", "success");
+                    else showToast("Failed to save handoff number", "error");
                   }}
                   disabled={savingHandoff}
                   icon={savingHandoff ? undefined : <Save size={16} />}
