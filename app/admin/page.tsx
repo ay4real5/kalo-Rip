@@ -9,9 +9,12 @@ import {
   ArrowUpRight,
   MapPin,
   Car,
+  Settings,
+  Save,
 } from "lucide-react";
 import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Badge } from "@/app/components/ui/Badge";
+import { Button } from "@/app/components/ui/Button";
 import { cn } from "@/app/lib/cn";
 
 interface Booking {
@@ -62,18 +65,22 @@ export default function AdminDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
-  const [tab, setTab] = useState<"overview" | "bookings" | "instructors" | "calls">("overview");
+  const [tab, setTab] = useState<"overview" | "bookings" | "instructors" | "calls" | "settings">("overview");
   const [loading, setLoading] = useState(true);
+  const [handoffNumber, setHandoffNumber] = useState("");
+  const [savingHandoff, setSavingHandoff] = useState(false);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/bookings").then((r) => r.json()),
       fetch("/api/instructors").then((r) => r.json()),
       fetch("/api/calls").then((r) => r.json()),
-    ]).then(([b, i, c]) => {
+      fetch("/api/settings?key=human_handoff_number").then((r) => r.json()),
+    ]).then(([b, i, c, s]) => {
       setBookings(b);
       setInstructors(i);
       setCalls(c);
+      setHandoffNumber((s as { value: string | null }).value ?? "");
       setLoading(false);
     });
   }, []);
@@ -83,6 +90,7 @@ export default function AdminDashboard() {
     { id: "bookings", label: "Bookings" },
     { id: "instructors", label: "Instructors" },
     { id: "calls", label: "Calls" },
+    { id: "settings", label: "Settings" },
   ] as const;
 
   const stats = [
@@ -345,6 +353,53 @@ export default function AdminDashboard() {
                 ))}
               </div>
             )}
+          </Card>
+        )}
+
+        {tab === "settings" && (
+          <Card padding="lg">
+            <div className="mb-6 flex items-center gap-2">
+              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                <Settings size={20} />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Settings</CardTitle>
+                <CardDescription>Configure voice and business options</CardDescription>
+              </div>
+            </div>
+
+            <div className="max-w-md">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Human handoff number
+              </label>
+              <p className="mb-3 text-sm text-slate-500">
+                Calls are transferred to this number when the AI cannot help or the caller asks for a human.
+              </p>
+              <div className="flex gap-3">
+                <input
+                  type="tel"
+                  value={handoffNumber}
+                  onChange={(e) => setHandoffNumber(e.target.value)}
+                  placeholder="+44 7123 456789"
+                  className="flex-1 rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                />
+                <Button
+                  onClick={async () => {
+                    setSavingHandoff(true);
+                    await fetch("/api/settings", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ key: "human_handoff_number", value: handoffNumber }),
+                    });
+                    setSavingHandoff(false);
+                  }}
+                  disabled={savingHandoff}
+                  icon={savingHandoff ? undefined : <Save size={16} />}
+                >
+                  {savingHandoff ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
           </Card>
         )}
       </div>

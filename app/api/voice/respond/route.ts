@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
+import { getHandoffNumber } from "@/app/lib/settings";
 import { executeTool, getToolDefinitions, type CallContext } from "@/app/lib/voice-tools";
 
 interface VoiceMessage {
@@ -22,7 +23,7 @@ Rules:
 - If the caller is distressed, asks for a human, or you fail to understand twice, call transfer_to_human.
 - Ask one or two questions at a time. Keep responses short enough to speak comfortably.`;
 
-function buildTwiML(sayText: string, gather = true, transferNumber?: string) {
+function buildTwiML(sayText: string, gather = true, handoffNumber: string, transferNumber?: string) {
   const actionUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/voice/respond`;
   const escaped = sayText
     .replace(/&/g, "&amp;")
@@ -39,7 +40,7 @@ function buildTwiML(sayText: string, gather = true, transferNumber?: string) {
     twiml += `    <Say voice="Polly.Joanna" language="en-GB">Please go ahead.</Say>\n`;
     twiml += `  </Gather>\n`;
     twiml += `  <Say voice="Polly.Joanna" language="en-GB">I didn't catch that. I'll transfer you to a human.</Say>\n`;
-    twiml += `  <Dial>+441234567890</Dial>\n`;
+    twiml += `  <Dial>${handoffNumber}</Dial>\n`;
   }
 
   twiml += `</Response>`;
@@ -47,6 +48,7 @@ function buildTwiML(sayText: string, gather = true, transferNumber?: string) {
 }
 
 export async function POST(req: Request) {
+  const handoffNumber = await getHandoffNumber();
   const form = await req.formData();
   const callSid = String(form.get("CallSid") ?? "unknown");
   const fromNumber = String(form.get("From") ?? "");
@@ -76,7 +78,7 @@ export async function POST(req: Request) {
 
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey) {
-    return new NextResponse(buildTwiML("I'm sorry, our booking assistant is unavailable right now. Transferring you.", false, "+441234567890"), {
+    return new NextResponse(buildTwiML("I'm sorry, our booking assistant is unavailable right now. Transferring you.", false, handoffNumber, handoffNumber), {
       headers: { "Content-Type": "text/xml" },
     });
   }
@@ -181,7 +183,8 @@ export async function POST(req: Request) {
     const twiml = buildTwiML(
       assistantText,
       !isTransfer,
-      isTransfer ? "+441234567890" : undefined
+      handoffNumber,
+      isTransfer ? handoffNumber : undefined
     );
 
     return new NextResponse(twiml, {
@@ -193,7 +196,8 @@ export async function POST(req: Request) {
       buildTwiML(
         "I'm having trouble understanding. Let me transfer you to a human.",
         false,
-        "+441234567890"
+        handoffNumber,
+        handoffNumber
       ),
       { headers: { "Content-Type": "text/xml" } }
     );

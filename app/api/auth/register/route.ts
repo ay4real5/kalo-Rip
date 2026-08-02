@@ -19,12 +19,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User already exists" }, { status: 409 });
     }
 
+    const userCount = await prisma.user.count();
+    const effectiveRole = (userCount === 0 ? "ADMIN" : role) as "ADMIN" | "INSTRUCTOR" | "CUSTOMER";
+
     const user = await prisma.user.create({
       data: {
         id,
         email,
         name,
-        role,
+        role: effectiveRole,
       },
     });
 

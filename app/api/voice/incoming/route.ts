@@ -1,4 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
+import { getHandoffNumber } from "@/app/lib/settings";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
     .catch(() => undefined);
 
   const actionUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/voice/respond`;
+  const handoffNumber = await getHandoffNumber();
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Joanna" language="en-GB">
@@ -30,7 +32,7 @@ export async function POST(req: Request) {
     <Say voice="Polly.Joanna" language="en-GB">You can say, I want to book a driving lesson.</Say>
   </Gather>
   <Say voice="Polly.Joanna" language="en-GB">I didn't catch that. Let me transfer you to a human.</Say>
-  <Dial>+441234567890</Dial>
+  <Dial>${handoffNumber}</Dial>
 </Response>`;
 
   return new NextResponse(twiml, {
