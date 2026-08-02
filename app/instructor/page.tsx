@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, Plus, Trash2, CalendarDays, MapPin, Car } from "lucide-react";
+import { Clock, Plus, Trash2, CalendarDays, MapPin, Car, PoundSterling, Settings } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/Card";
+import { Badge } from "@/app/components/ui/Badge";
+import { Button } from "@/app/components/ui/Button";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -12,6 +15,10 @@ interface Instructor {
   basePostcode: string;
   transmission: string;
   hourlyRatePence: number;
+  lessonDurationMinutes: number;
+  maxLessonsPerDay: number;
+  acceptsNewLearners: boolean;
+  active: boolean;
 }
 
 interface Availability {
@@ -26,6 +33,7 @@ export default function InstructorPortal() {
   const [selected, setSelected] = useState<string>("");
   const [availability, setAvailability] = useState<Availability[]>([]);
   const [form, setForm] = useState({ dayOfWeek: 1, startTime: "09:00", endTime: "17:00" });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/instructors")
@@ -33,6 +41,7 @@ export default function InstructorPortal() {
       .then((data) => {
         setInstructors(data);
         if (data[0]) setSelected(data[0].id);
+        setLoading(false);
       });
   }, []);
 
@@ -67,18 +76,31 @@ export default function InstructorPortal() {
 
   const activeInstructor = instructors.find((i) => i.id === selected);
 
+  if (loading) {
+    return (
+      <div className="px-6 py-12">
+        <div className="mx-auto max-w-5xl">
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-200" />
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-200" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-6 py-8">
-      <div className="mx-auto max-w-4xl">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Instructor portal</h1>
-          <p className="text-zinc-600">Manage your profile, availability and time off.</p>
-        </div>
-
-        <div className="mb-6 rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-          <label className="block text-sm font-semibold text-zinc-700">Instructor</label>
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-8 flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Instructor portal</h1>
+            <p className="text-slate-500">Manage your profile, availability and time off.</p>
+          </div>
           <select
-            className="mt-2 block w-full rounded-lg border-zinc-300 bg-zinc-50 p-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+            className="rounded-xl border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-700 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
           >
@@ -91,102 +113,144 @@ export default function InstructorPortal() {
         </div>
 
         {activeInstructor && (
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-              <div className="flex items-center gap-2 text-sm font-medium text-zinc-500">
-                <Car size={16} />
-                Vehicle
+          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="flex items-center gap-4" padding="md">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <Car size={22} />
               </div>
-              <p className="mt-1 text-zinc-900">{activeInstructor.vehicleType ?? "Not set"}</p>
-            </div>
-            <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-              <div className="flex items-center gap-2 text-sm font-medium text-zinc-500">
-                <MapPin size={16} />
-                Base postcode
+              <div>
+                <p className="text-xs font-medium text-slate-500">Vehicle</p>
+                <p className="font-semibold text-slate-900">{activeInstructor.vehicleType ?? "Not set"}</p>
               </div>
-              <p className="mt-1 text-zinc-900">{activeInstructor.basePostcode}</p>
-            </div>
-            <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-              <div className="flex items-center gap-2 text-sm font-medium text-zinc-500">
-                <Clock size={16} />
-                Hourly rate
+            </Card>
+            <Card className="flex items-center gap-4" padding="md">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <MapPin size={22} />
               </div>
-              <p className="mt-1 text-zinc-900">
-                £{(activeInstructor.hourlyRatePence / 100).toFixed(2)} / hr
-              </p>
-            </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500">Base</p>
+                <p className="font-semibold text-slate-900">{activeInstructor.basePostcode}</p>
+              </div>
+            </Card>
+            <Card className="flex items-center gap-4" padding="md">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <PoundSterling size={22} />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500">Rate</p>
+                <p className="font-semibold text-slate-900">
+                  £{(activeInstructor.hourlyRatePence / 100).toFixed(2)} / hr
+                </p>
+              </div>
+            </Card>
+            <Card className="flex items-center gap-4" padding="md">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                <Clock size={22} />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500">Lesson</p>
+                <p className="font-semibold text-slate-900">{activeInstructor.lessonDurationMinutes} min</p>
+              </div>
+            </Card>
           </div>
         )}
 
-        <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-zinc-200">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-              <CalendarDays size={20} />
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2" padding="none">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                  <CalendarDays size={20} />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Weekly availability</CardTitle>
+                  <CardDescription>Set the days and hours you teach</CardDescription>
+                </div>
+              </div>
             </div>
-            <h2 className="text-lg font-semibold text-zinc-900">Weekly availability</h2>
-          </div>
 
-          {availability.length === 0 ? (
-            <p className="text-sm text-zinc-500">No availability set yet.</p>
-          ) : (
-            <ul className="divide-y divide-zinc-100">
-              {availability.map((a) => (
-                <li key={a.id} className="flex items-center justify-between py-4">
-                  <div className="flex items-center gap-3">
-                    <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-700">
-                      {DAYS[a.dayOfWeek]}
-                    </span>
-                    <span className="text-sm text-zinc-700">
-                      {a.startTime} - {a.endTime}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => removeAvailability(a.id)}
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 size={14} />
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <form onSubmit={addAvailability} className="mt-6 rounded-xl bg-zinc-50 p-4">
-            <h3 className="mb-4 text-sm font-semibold text-zinc-900">Add weekly slot</h3>
-            <div className="grid gap-4 sm:grid-cols-4">
-              <select
-                className="rounded-lg border-zinc-300 bg-white p-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-                value={form.dayOfWeek}
-                onChange={(e) => setForm({ ...form, dayOfWeek: Number(e.target.value) })}
-              >
-                {DAYS.map((d, i) => (
-                  <option key={d} value={i}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="time"
-                className="rounded-lg border-zinc-300 bg-white p-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-                value={form.startTime}
-                onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-              />
-              <input
-                type="time"
-                className="rounded-lg border-zinc-300 bg-white p-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-                value={form.endTime}
-                onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-              />
-              <button
-                type="submit"
-                className="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-              >
-                <Plus size={16} />
-                Add slot
-              </button>
+            <div className="px-6 py-4">
+              {availability.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-12 text-slate-500">
+                  <Clock size={32} className="mb-3 opacity-40" />
+                  <p className="font-medium">No availability set</p>
+                  <p className="text-sm">Add your first weekly slot below.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {availability.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <Badge variant="primary">{DAYS[a.dayOfWeek]}</Badge>
+                        <span className="text-sm font-medium text-slate-700">
+                          {a.startTime} - {a.endTime}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeAvailability(a.id)}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                      >
+                        <Trash2 size={14} />
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </form>
+          </Card>
+
+          <Card padding="md">
+            <CardHeader className="px-0 pb-4">
+              <div className="flex items-center gap-2">
+                <Settings size={18} className="text-emerald-600" />
+                <CardTitle className="text-lg">Add slot</CardTitle>
+              </div>
+              <CardDescription>Add a repeating weekly time slot</CardDescription>
+            </CardHeader>
+            <form onSubmit={addAvailability} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">Day</label>
+                <select
+                  className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                  value={form.dayOfWeek}
+                  onChange={(e) => setForm({ ...form, dayOfWeek: Number(e.target.value) })}
+                >
+                  {DAYS.map((d, i) => (
+                    <option key={d} value={i}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">Start</label>
+                  <input
+                    type="time"
+                    className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                    value={form.startTime}
+                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">End</label>
+                  <input
+                    type="time"
+                    className="w-full rounded-xl border-slate-200 bg-slate-50 p-2.5 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                    value={form.endTime}
+                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full" icon={<Plus size={16} />}>
+                Add weekly slot
+              </Button>
+            </form>
+          </Card>
         </div>
       </div>
     </div>

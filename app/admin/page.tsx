@@ -5,10 +5,14 @@ import {
   CalendarDays,
   Users,
   Phone,
-  CheckCircle2,
-  AlertCircle,
   TrendingUp,
+  ArrowUpRight,
+  MapPin,
+  Car,
 } from "lucide-react";
+import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
+import { Badge } from "@/app/components/ui/Badge";
+import { cn } from "@/app/lib/cn";
 
 interface Booking {
   id: string;
@@ -28,6 +32,8 @@ interface Instructor {
   acceptsNewLearners: boolean;
   hourlyRatePence: number;
   basePostcode: string;
+  vehicleType: string | null;
+  transmission: string;
 }
 
 interface CallLog {
@@ -56,224 +62,291 @@ export default function AdminDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
-  const [tab, setTab] = useState<"bookings" | "instructors" | "calls">("bookings");
+  const [tab, setTab] = useState<"overview" | "bookings" | "instructors" | "calls">("overview");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/bookings").then((r) => r.json()).then(setBookings);
-    fetch("/api/instructors").then((r) => r.json()).then(setInstructors);
-    fetch("/api/calls").then((r) => r.json()).then(setCalls);
+    Promise.all([
+      fetch("/api/bookings").then((r) => r.json()),
+      fetch("/api/instructors").then((r) => r.json()),
+      fetch("/api/calls").then((r) => r.json()),
+    ]).then(([b, i, c]) => {
+      setBookings(b);
+      setInstructors(i);
+      setCalls(c);
+      setLoading(false);
+    });
   }, []);
 
   const tabs = [
-    { id: "bookings", label: "Bookings", icon: CalendarDays },
-    { id: "instructors", label: "Instructors", icon: Users },
-    { id: "calls", label: "Calls", icon: Phone },
+    { id: "overview", label: "Overview" },
+    { id: "bookings", label: "Bookings" },
+    { id: "instructors", label: "Instructors" },
+    { id: "calls", label: "Calls" },
   ] as const;
+
+  const stats = [
+    {
+      label: "Total bookings",
+      value: bookings.length,
+      icon: CalendarDays,
+      color: "bg-emerald-50 text-emerald-600",
+      trend: "All time",
+    },
+    {
+      label: "Instructors",
+      value: instructors.length,
+      icon: Users,
+      color: "bg-blue-50 text-blue-600",
+      trend: `${instructors.filter((i) => i.active).length} active`,
+    },
+    {
+      label: "Recent calls",
+      value: calls.length,
+      icon: Phone,
+      color: "bg-amber-50 text-amber-600",
+      trend: "Last 100 calls",
+    },
+    {
+      label: "AI bookings",
+      value: bookings.filter((b) => b.source === "PHONE_AI").length,
+      icon: TrendingUp,
+      color: "bg-violet-50 text-violet-600",
+      trend: "Booked by voice AI",
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div className="px-6 py-12">
+        <div className="mx-auto max-w-6xl">
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-200" />
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-200" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900">Admin dashboard</h1>
-          <p className="text-zinc-600">Overview of bookings, instructors and calls.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Admin dashboard</h1>
+          <p className="text-slate-500">Overview of bookings, instructors and calls.</p>
         </div>
 
-        <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-zinc-500">Total bookings</p>
-                <p className="mt-1 text-2xl font-bold text-zinc-900">{bookings.length}</p>
-              </div>
-              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-                <CalendarDays size={20} />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-zinc-500">Instructors</p>
-                <p className="mt-1 text-2xl font-bold text-zinc-900">{instructors.length}</p>
-              </div>
-              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                <Users size={20} />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-zinc-500">Recent calls</p>
-                <p className="mt-1 text-2xl font-bold text-zinc-900">{calls.length}</p>
-              </div>
-              <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
-                <Phone size={20} />
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-zinc-500">AI bookings</p>
-                <p className="mt-1 text-2xl font-bold text-zinc-900">
-                  {bookings.filter((b) => b.source === "PHONE_AI").length}
-                </p>
-              </div>
-              <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                <TrendingUp size={20} />
-              </div>
-            </div>
-          </div>
+        <div className="mb-8 flex flex-wrap gap-2">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
+                tab === t.id
+                  ? "bg-slate-900 text-white shadow-md"
+                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        <div className="rounded-xl bg-white shadow-sm ring-1 ring-zinc-200">
-          <div className="border-b border-zinc-200 px-4 py-3">
-            <div className="flex gap-2">
-              {tabs.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                    tab === t.id
-                      ? "bg-zinc-900 text-white"
-                      : "bg-white text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                >
-                  <t.icon size={16} />
-                  {t.label}
-                </button>
+        {(tab === "overview" || tab === "bookings") && (
+          <>
+            <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {stats.map((stat) => (
+                <Card key={stat.label} padding="md" className="relative overflow-hidden">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+                      <p className="mt-2 text-3xl font-bold text-slate-900">{stat.value}</p>
+                      <p className="mt-1 text-xs text-slate-500">{stat.trend}</p>
+                    </div>
+                    <div className={cn("rounded-xl p-2.5", stat.color)}>
+                      <stat.icon size={20} />
+                    </div>
+                  </div>
+                </Card>
               ))}
             </div>
-          </div>
 
-          <div className="p-4">
-            {tab === "bookings" && (
-              <div className="overflow-x-auto">
-                {bookings.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-                    <CalendarDays size={32} className="mb-2 opacity-40" />
-                    <p>No bookings yet.</p>
+            <Card padding="none" className="overflow-hidden">
+              <div className="border-b border-slate-200 px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">Recent bookings</CardTitle>
+                    <CardDescription>Latest confirmed lessons</CardDescription>
                   </div>
-                ) : (
+                  <button
+                    onClick={() => setTab("bookings")}
+                    className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                  >
+                    View all <ArrowUpRight size={16} />
+                  </button>
+                </div>
+              </div>
+              {bookings.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-6 py-16 text-slate-500">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+                    <CalendarDays size={28} className="text-slate-400" />
+                  </div>
+                  <p className="mt-4 font-medium">No bookings yet</p>
+                  <p className="mt-1 text-sm">Once callers book lessons they will appear here.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b text-xs font-medium text-zinc-500">
-                        <th className="pb-3 pl-2">Customer</th>
-                        <th className="pb-3">Instructor</th>
-                        <th className="pb-3">Time</th>
-                        <th className="pb-3">Status</th>
-                        <th className="pb-3">Source</th>
+                      <tr className="border-b border-slate-100 bg-slate-50/50 text-xs font-medium text-slate-500">
+                        <th className="px-6 py-3">Customer</th>
+                        <th className="px-6 py-3">Instructor</th>
+                        <th className="px-6 py-3">Time</th>
+                        <th className="px-6 py-3">Status</th>
+                        <th className="px-6 py-3">Source</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {bookings.map((b) => (
-                        <tr key={b.id} className="border-b last:border-0 hover:bg-zinc-50">
-                          <td className="py-3 pl-2 font-medium text-zinc-900">
+                      {bookings.slice(0, 5).map((b) => (
+                        <tr key={b.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
+                          <td className="px-6 py-4 font-medium text-slate-900">
                             {b.customer.user.name ?? b.customer.user.email ?? "Unknown"}
                           </td>
-                          <td className="py-3 text-zinc-700">
-                            {b.instructor.user.name ?? "Unknown"}
-                          </td>
-                          <td className="py-3 text-zinc-700">{formatTime(b.startsAt)}</td>
-                          <td className="py-3">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                              <CheckCircle2 size={12} />
+                          <td className="px-6 py-4 text-slate-700">{b.instructor.user.name ?? "Unknown"}</td>
+                          <td className="px-6 py-4 text-slate-700">{formatTime(b.startsAt)}</td>
+                          <td className="px-6 py-4">
+                            <Badge variant="success" dot>
                               {b.status}
-                            </span>
+                            </Badge>
                           </td>
-                          <td className="py-3 text-zinc-700">{b.source}</td>
+                          <td className="px-6 py-4">
+                            <Badge variant={b.source === "PHONE_AI" ? "primary" : "neutral"}>{b.source}</Badge>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </Card>
+          </>
+        )}
 
-            {tab === "instructors" && (
+        {tab === "instructors" && (
+          <Card padding="none" className="overflow-hidden">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <CardTitle className="text-lg">Instructors</CardTitle>
+              <CardDescription>Manage your team and their availability</CardDescription>
+            </div>
+            {instructors.length === 0 ? (
+              <div className="px-6 py-16 text-center text-slate-500">No instructors found.</div>
+            ) : (
               <div className="overflow-x-auto">
-                {instructors.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-                    <Users size={32} className="mb-2 opacity-40" />
-                    <p>No instructors yet.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b text-xs font-medium text-zinc-500">
-                        <th className="pb-3 pl-2">Name</th>
-                        <th className="pb-3">Base postcode</th>
-                        <th className="pb-3">Rate</th>
-                        <th className="pb-3">Status</th>
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-xs font-medium text-slate-500">
+                      <th className="px-6 py-3">Instructor</th>
+                      <th className="px-6 py-3">Vehicle</th>
+                      <th className="px-6 py-3">Base</th>
+                      <th className="px-6 py-3">Rate</th>
+                      <th className="px-6 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {instructors.map((i) => (
+                      <tr key={i.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                              {(i.user.name ?? "U")[0]}
+                            </div>
+                            <div>
+                              <div className="font-medium text-slate-900">{i.user.name ?? i.user.email ?? i.id}</div>
+                              <div className="text-xs text-slate-500 capitalize">{i.transmission.toLowerCase()}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-slate-700">
+                            <Car size={14} />
+                            {i.vehicleType ?? "Not set"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-slate-700">
+                            <MapPin size={14} />
+                            {i.basePostcode}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-900">{formatCurrency(i.hourlyRatePence)} / hr</td>
+                        <td className="px-6 py-4">
+                          {i.active ? (
+                            <Badge variant="success" dot>Active</Badge>
+                          ) : (
+                            <Badge variant="neutral">Inactive</Badge>
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {instructors.map((i) => (
-                        <tr key={i.id} className="border-b last:border-0 hover:bg-zinc-50">
-                          <td className="py-3 pl-2 font-medium text-zinc-900">
-                            {i.user.name ?? i.user.email ?? i.id}
-                          </td>
-                          <td className="py-3 text-zinc-700">{i.basePostcode}</td>
-                          <td className="py-3 text-zinc-700">
-                            {formatCurrency(i.hourlyRatePence)} / hr
-                          </td>
-                          <td className="py-3">
-                            {i.active ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                                <CheckCircle2 size={12} /> Active
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700">
-                                <AlertCircle size={12} /> Inactive
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-
-            {tab === "calls" && (
-              <div className="overflow-x-auto">
-                {calls.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-                    <Phone size={32} className="mb-2 opacity-40" />
-                    <p>No calls yet.</p>
-                  </div>
-                ) : (
-                  <ul className="divide-y divide-zinc-100">
-                    {calls.map((c) => (
-                      <li key={c.id} className="py-4">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-zinc-900">{c.fromNumber}</span>
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                              c.status === "HANDED_OFF"
-                                ? "bg-amber-100 text-amber-700"
-                                : c.status === "COMPLETED"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-zinc-100 text-zinc-700"
-                            }`}
-                          >
-                            {c.status}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-zinc-600">{c.summary}</p>
-                        <p className="mt-1 text-xs text-zinc-400">
-                          {new Date(c.startedAt).toLocaleString("en-GB")}
-                        </p>
-                      </li>
                     ))}
-                  </ul>
-                )}
+                  </tbody>
+                </table>
               </div>
             )}
-          </div>
-        </div>
+          </Card>
+        )}
+
+        {tab === "calls" && (
+          <Card padding="none" className="overflow-hidden">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <CardTitle className="text-lg">Recent calls</CardTitle>
+              <CardDescription>History of AI-handled and transferred calls</CardDescription>
+            </div>
+            {calls.length === 0 ? (
+              <div className="flex flex-col items-center px-6 py-16 text-slate-500">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+                  <Phone size={28} className="text-slate-400" />
+                </div>
+                <p className="mt-4 font-medium">No calls yet</p>
+                <p className="mt-1 text-sm">Once your Twilio number is live, calls will appear here.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {calls.map((c) => (
+                  <div key={c.id} className="px-6 py-4 hover:bg-slate-50/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                          <Phone size={16} />
+                        </div>
+                        <div>
+                          <div className="font-medium text-slate-900">{c.fromNumber}</div>
+                          <div className="text-xs text-slate-500">{new Date(c.startedAt).toLocaleString("en-GB")}</div>
+                        </div>
+                      </div>
+                      <Badge
+                        variant={
+                          c.status === "HANDED_OFF"
+                            ? "warning"
+                            : c.status === "COMPLETED"
+                            ? "success"
+                            : "neutral"
+                        }
+                        dot
+                      >
+                        {c.status}
+                      </Badge>
+                    </div>
+                    {c.summary && <p className="mt-2 pl-14 text-sm text-slate-600">{c.summary}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
       </div>
     </div>
   );
