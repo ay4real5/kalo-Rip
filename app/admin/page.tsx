@@ -11,7 +11,9 @@ import {
   Car,
   Settings,
   Save,
+  Plus,
 } from "lucide-react";
+import Link from "next/link";
 import { Card, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Badge } from "@/app/components/ui/Badge";
 import { Button } from "@/app/components/ui/Button";
@@ -65,7 +67,7 @@ export default function AdminDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
-  const [tab, setTab] = useState<"overview" | "bookings" | "instructors" | "calls" | "settings">("overview");
+  const [tab, setTab] = useState<"overview" | "bookings" | "instructors" | "calls" | "settings" | "calendar">("overview");
   const [loading, setLoading] = useState(true);
   const [handoffNumber, setHandoffNumber] = useState("");
   const [savingHandoff, setSavingHandoff] = useState(false);
@@ -88,6 +90,7 @@ export default function AdminDashboard() {
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "bookings", label: "Bookings" },
+    { id: "calendar", label: "Calendar", href: "/admin/calendar" },
     { id: "instructors", label: "Instructors" },
     { id: "calls", label: "Calls" },
     { id: "settings", label: "Settings" },
@@ -142,26 +145,44 @@ export default function AdminDashboard() {
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">Admin dashboard</h1>
-          <p className="text-slate-500">Overview of bookings, instructors and calls.</p>
+        <div className="mb-8 flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Admin dashboard</h1>
+            <p className="text-slate-500">Overview of bookings, instructors and calls.</p>
+          </div>
+          <Button href="/admin/bookings/new" icon={<Plus size={16} />}>Create booking</Button>
         </div>
 
         <div className="mb-8 flex flex-wrap gap-2">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
-                tab === t.id
-                  ? "bg-slate-900 text-white shadow-md"
-                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
+          {tabs.map((t) =>
+            "href" in t ? (
+              <Link
+                key={t.id}
+                href={t.href}
+                className={cn(
+                  "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
+                  tab === t.id
+                    ? "bg-slate-900 text-white shadow-md"
+                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                )}
+              >
+                {t.label}
+              </Link>
+            ) : (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
+                  tab === t.id
+                    ? "bg-slate-900 text-white shadow-md"
+                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                )}
+              >
+                {t.label}
+              </button>
+            )
+          )}
         </div>
 
         {(tab === "overview" || tab === "bookings") && (
