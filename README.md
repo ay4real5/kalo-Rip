@@ -11,6 +11,7 @@ AI phone receptionist and booking platform for driving schools.
 - Provides an instructor portal for availability and leave.
 - Provides an admin dashboard for bookings, calls and overrides.
 - Transfers difficult calls to a human with a summary.
+- Refills cancelled lessons from a waitlist instead of losing them.
 
 ## Architecture
 
@@ -77,8 +78,25 @@ The first working call flow is:
 ## Important principles
 
 - The AI never invents availability. It always calls `search_available_lesson_slots`.
-- All business rules (areas, transmission, holidays, buffers, double-booking checks) live in `app/lib/booking-engine.ts`.
+- All business rules (areas, transmission, holidays, travel buffers, daily caps,
+  double-booking checks) live in `app/lib/booking-engine.ts`.
 - Calls, bookings and slot holds are persisted in PostgreSQL.
+- Identity on a call comes from the phone line, never from the model. Tools act
+  only for the caller they resolved from the incoming number.
+- Times are stored as UTC instants and interpreted in `SCHOOL_TIMEZONE`
+  (default `Europe/London`). Never build a lesson time with `new Date("...T09:00")` —
+  that parses in the server's zone, which is UTC on Vercel and an hour out for
+  the whole of BST. Use the helpers in `app/lib/timezone.ts`.
+- Overlapping confirmed lessons are rejected by a database exclusion
+  constraint, not just by application checks, which race.
+
+## Waitlist
+
+Learners can register interest in a time that isn't currently free
+(`POST /api/waitlist`, optionally scoped to one instructor and a time-of-day
+range). When a future booking is cancelled, `cancelBooking` matches the freed
+slot against active entries and texts the earliest-joined matches, first come
+first served. Notification is best-effort: it can never fail a cancellation.
 
 ## Twilio configuration
 

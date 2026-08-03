@@ -45,6 +45,7 @@ model Customer {
 
   bookings        Booking[]
   calls           CallLog[]
+  waitlistEntries WaitlistEntry[]
 
   @@map("customers")
 }
@@ -88,6 +89,7 @@ model Instructor {
   bookings          Booking[]
   scheduleOverrides ScheduleOverride[]
   reviews           Review[]
+  waitlistEntries   WaitlistEntry[]
 
   @@map("instructors")
 }
@@ -161,6 +163,38 @@ model Booking {
   // migrations/20260802150000_prevent_double_booking. Do not rely on application
   // checks alone; they race.
   @@map("bookings")
+}
+
+/// A learner waiting for a slot that isn't currently free. When a booking is
+/// cancelled the freed slot is matched against these and the earliest-joined
+/// matching learners are texted, so cancellations refill instead of being lost.
+model WaitlistEntry {
+  id            String         @id @default(cuid())
+  customerId    String         @map("customer_id")
+  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// Null means "any instructor who covers me".
+  instructorId  String?        @map("instructor_id")
+  instructor    Instructor?    @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  earliestDate  DateTime       @map("earliest_date")
+  latestDate    DateTime       @map("latest_date")
+  /// Optional wall-clock preference in UK local time, e.g. "17:00".
+  earliestTime  String?        @map("earliest_time")
+  latestTime    String?        @map("latest_time")
+  status        WaitlistStatus @default(ACTIVE)
+  notifiedAt    DateTime?      @map("notified_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@index([status, instructorId])
+  @@index([customerId])
+  @@map("waitlist_entries")
+}
+
+enum WaitlistStatus {
+  ACTIVE
+  NOTIFIED
+  CONVERTED
+  CANCELLED
 }
 
 enum BookingStatus {
