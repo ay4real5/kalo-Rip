@@ -39,11 +39,17 @@ CREATE INDEX IF NOT EXISTS "bookings_customer_id_starts_at_idx"
 CREATE INDEX IF NOT EXISTS "bookings_status_starts_at_idx"
   ON "bookings" ("status", "starts_at");
 
+-- tsrange, not tstzrange: Prisma maps DateTime to `timestamp without time
+-- zone`, so tstzrange would need an implicit cast that is only STABLE (it
+-- depends on the session TimeZone) and Postgres rejects it in an index
+-- expression with 42P17. Every value in these columns is written as UTC by the
+-- client, so comparing them as naive timestamps is consistent.
+--
 -- '[)' — a lesson ending at 10:00 does not overlap one starting at 10:00.
 ALTER TABLE "bookings"
   ADD CONSTRAINT "bookings_no_overlapping_confirmed"
   EXCLUDE USING gist (
     "instructor_id" WITH =,
-    tstzrange("starts_at", "ends_at", '[)') WITH &&
+    tsrange("starts_at", "ends_at", '[)') WITH &&
   )
   WHERE ("status" = 'CONFIRMED');
