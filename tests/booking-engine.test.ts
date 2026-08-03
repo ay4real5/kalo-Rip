@@ -52,6 +52,8 @@ const INSTRUCTOR = {
   offersIntensive: false,
   transmission: "MANUAL",
   lessonDurationMinutes: 60,
+  travelBufferMinutes: 0,
+  maxLessonsPerDay: null as number | null,
   hourlyRatePence: 3500,
   vehicleType: "Corsa",
   basePostcode: "CR0 1AA",
@@ -246,6 +248,98 @@ describe("searchAvailableSlots — exclusions", () => {
     await searchDay(SUMMER_WED);
     expect(lastWhere.booking).toHaveProperty("startsAt.lt");
     expect(lastWhere.booking).toHaveProperty("endsAt.gt");
+  });
+
+  it("keeps travel time clear around an existing lesson", async () => {
+    // travelBufferMinutes was collected in the instructor portal, saved to the
+    // database, and never read — so lessons were sold back-to-back across town
+    // with no time to drive between pupils.
+    db.instructor = [{ ...INSTRUCTOR, travelBufferMinutes: 30 }];
+    db.availability = [
+      { instructorId: "inst-1", dayOfWeek: 3, startTime: "09:00", endTime: "14:00" },
+    ];
+    db.booking = [
+      {
+        id: "b1",
+        startsAt: new Date(`${SUMMER_WED}T10:00:00.000Z`), // 11:00-12:00 UK
+        endsAt: new Date(`${SUMMER_WED}T11:00:00.000Z`),
+        status: "CONFIRMED",
+      },
+    ];
+
+    const starts = (await searchDay(SUMMER_WED)).map((s) => s.startsAt.toISOString());
+
+    // The lesson runs 11:00-12:00 UK, so a 30-minute buffer blocks 10:30-12:30.
+    // That rules out the 10:00, 11:00 and 12:00 starts, leaving 09:00 and
+    // 13:00 UK — 08:00Z and 12:00Z.
+    expect(starts).toEqual([
+      `${SUMMER_WED}T08:00:00.000Z`,
+      `${SUMMER_WED}T12:00:00.000Z`,
+    ]);
+  });
+
+  it("offers back-to-back lessons when the buffer is zero", async () => {
+    db.instructor = [{ ...INSTRUCTOR, travelBufferMinutes: 0 }];
+    db.booking = [
+      {
+        id: "b1",
+        startsAt: new Date(`${SUMMER_WED}T09:00:00.000Z`),
+        endsAt: new Date(`${SUMMER_WED}T10:00:00.000Z`),
+        status: "CONFIRMED",
+      },
+    ];
+    const starts = (await searchDay(SUMMER_WED)).map((s) => s.startsAt.toISOString());
+    expect(starts).toContain(`${SUMMER_WED}T08:00:00.000Z`);
+    expect(starts).toContain(`${SUMMER_WED}T10:00:00.000Z`);
+  });
+
+  it("stops offering slots once the daily cap is reached", async () => {
+    // maxLessonsPerDay was likewise configurable but never enforced.
+    db.instructor = [{ ...INSTRUCTOR, maxLessonsPerDay: 2 }];
+    db.booking = [
+      {
+        id: "b1",
+        startsAt: new Date(`${SUMMER_WED}T08:00:00.000Z`),
+        endsAt: new Date(`${SUMMER_WED}T09:00:00.000Z`),
+        status: "CONFIRMED",
+      },
+      {
+        id: "b2",
+        startsAt: new Date(`${SUMMER_WED}T09:00:00.000Z`),
+        endsAt: new Date(`${SUMMER_WED}T10:00:00.000Z`),
+        status: "CONFIRMED",
+      },
+    ];
+    expect(await searchDay(SUMMER_WED)).toHaveLength(0);
+  });
+
+  it("still offers slots below the daily cap", async () => {
+    db.instructor = [{ ...INSTRUCTOR, maxLessonsPerDay: 3 }];
+    db.booking = [
+      {
+        id: "b1",
+        startsAt: new Date(`${SUMMER_WED}T08:00:00.000Z`),
+        endsAt: new Date(`${SUMMER_WED}T09:00:00.000Z`),
+        status: "CONFIRMED",
+      },
+    ];
+    expect((await searchDay(SUMMER_WED)).length).toBeGreaterThan(0);
+  });
+
+  it("counts the daily cap in UK days, not server days", async () => {
+    // A 23:30Z lesson in BST is 00:30 the *next* UK day, so it must not count
+    // against the earlier day's cap.
+    db.instructor = [{ ...INSTRUCTOR, maxLessonsPerDay: 1 }];
+    db.booking = [
+      {
+        id: "late",
+        startsAt: new Date("2026-08-04T23:30:00.000Z"), // 00:30 UK on the 5th
+        endsAt: new Date("2026-08-05T00:30:00.000Z"),
+        status: "CONFIRMED",
+      },
+    ];
+    // That booking belongs to the 5th, so the 5th is already at its cap.
+    expect(await searchDay(SUMMER_WED)).toHaveLength(0);
   });
 
   it("returns slots in chronological order, capped at 20", async () => {

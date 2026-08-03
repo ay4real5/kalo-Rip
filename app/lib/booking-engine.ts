@@ -4,7 +4,9 @@ import {
   calendarDateOf,
   dayOfWeekFor,
   eachDateInRange,
+  nextDate,
   startOfLocalDay,
+  zonedDateString,
   zonedTimeToUtc,
 } from "@/app/lib/timezone";
 import type { Prisma } from "@prisma/client";
@@ -54,6 +56,42 @@ export interface BookingInput {
 
 const DEFAULT_LESSON_MINUTES = 60;
 
+/**
+ * Does a proposed lesson clash with one already in the diary?
+ *
+ * `bufferMinutes` is the instructor's travel time between pupils. An existing
+ * lesson blocks its own slot plus that much either side, because the
+ * instructor has to physically get there. The field was collected in the
+ * portal and saved to the database but never read, so lessons were sold
+ * back-to-back across town with no travel time at all.
+ *
+ * Half-open [start, end), matching the database exclusion constraint: with a
+ * zero buffer, a lesson ending at 10:00 does not clash with one starting then.
+ */
+function clashesWith(
+  proposed: { startsAt: Date; endsAt: Date },
+  existing: { startsAt: Date; endsAt: Date },
+  bufferMinutes: number
+): boolean {
+  return areIntervalsOverlapping(
+    {
+      start: addMinutes(existing.startsAt, -bufferMinutes),
+      end: addMinutes(existing.endsAt, bufferMinutes),
+    },
+    { start: proposed.startsAt, end: proposed.endsAt }
+  );
+}
+
+/** Confirmed lessons per local calendar date. */
+function countByLocalDate(bookings: { startsAt: Date }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const booking of bookings) {
+    const date = zonedDateString(booking.startsAt);
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export async function searchAvailableSlots(
   input: SearchSlotInput
 ): Promise<AvailableSlot[]> {
@@ -98,31 +136,31 @@ export async function searchAvailableSlots(
       },
     });
 
+    const bufferMinutes = instructor.travelBufferMinutes ?? 0;
+    const dailyCount = countByLocalDate(existingBookings);
+    const maxPerDay = instructor.maxLessonsPerDay ?? Infinity;
+
     for (const range of availability) {
       const lessonMinutes = instructor.lessonDurationMinutes ?? DEFAULT_LESSON_MINUTES;
+
+      // An instructor who caps their day at 4 lessons and already has 4 is
+      // full, however much availability the pattern says they have. This cap
+      // was configurable in the portal but never enforced.
+      if ((dailyCount.get(zonedDateString(range.startsAt)) ?? 0) >= maxPerDay) {
+        continue;
+      }
+
       let cursor = range.startsAt;
       while (addMinutes(cursor, lessonMinutes) <= range.endsAt) {
         const endsAt = addMinutes(cursor, lessonMinutes);
         const proposed = { startsAt: cursor, endsAt };
 
-        // Half-open [start, end): a lesson ending at 10:00 does not clash with
-        // one starting at 10:00. `inclusive: true` counted touching intervals
-        // as overlapping, so every booking also blocked the hour either side
-        // of itself and back-to-back lessons could never be offered. This
-        // matches the database exclusion constraint, which uses '[)' too.
         const isBooked = existingBookings.some((b) =>
-          areIntervalsOverlapping(
-            { start: b.startsAt, end: b.endsAt },
-            { start: proposed.startsAt, end: proposed.endsAt }
-          )
+          clashesWith(proposed, b, bufferMinutes)
         );
-
-        const isHeld = holds.some((h) =>
-          areIntervalsOverlapping(
-            { start: h.startsAt, end: h.endsAt },
-            { start: proposed.startsAt, end: proposed.endsAt }
-          )
-        );
+        // Holds are a short-lived "someone is confirming this" marker, so they
+        // block only their own slot — no travel buffer around them.
+        const isHeld = holds.some((h) => clashesWith(proposed, h, 0));
 
         if (!isBooked && !isHeld) {
           slots.push({
@@ -255,6 +293,44 @@ export async function holdSlot(
   customerPhone?: string,
   ttlMinutes = 5
 ) {
+  if (endsAt <= startsAt) {
+    throw new Error("Hold must end after it starts");
+  }
+
+  // A hold used to be written for any time at all, so the agent could reserve
+  // — and then confirm — a slot that was already booked or outside working
+  // hours. Validate before reserving.
+  const instructor = await prisma.instructor.findUnique({
+    where: { id: instructorId },
+    select: { travelBufferMinutes: true },
+  });
+  if (!instructor) throw new Error("Instructor not found");
+
+  if (!(await isWithinAvailability(instructorId, startsAt, endsAt))) {
+    throw new OutsideAvailabilityError();
+  }
+
+  const buffer = instructor.travelBufferMinutes ?? 0;
+  const conflict = await prisma.booking.findFirst({
+    where: {
+      instructorId,
+      status: { in: ["CONFIRMED"] },
+      startsAt: { lt: addMinutes(endsAt, buffer) },
+      endsAt: { gt: addMinutes(startsAt, -buffer) },
+    },
+  });
+  if (conflict) throw new SlotUnavailableError();
+
+  const existingHold = await prisma.slotHold.findFirst({
+    where: {
+      instructorId,
+      expiresAt: { gt: new Date() },
+      startsAt: { lt: endsAt },
+      endsAt: { gt: startsAt },
+    },
+  });
+  if (existingHold) throw new SlotUnavailableError();
+
   const expiresAt = addMinutes(new Date(), ttlMinutes);
   const hold = await prisma.slotHold.create({
     data: {
@@ -291,19 +367,41 @@ export async function createBooking(input: BookingInput) {
   // (see migrations/20260802150000_prevent_double_booking) — that constraint, not
   // this check, is what actually makes it safe under concurrency. The check
   // stays so the common case gets a readable error rather than a 23P01.
+  const buffer = instructor.travelBufferMinutes ?? 0;
+
   try {
     return await prisma.$transaction(async (tx) => {
+      // Widen the conflict window by the travel buffer so a booking made
+      // directly — by an admin, or by the voice agent against a stale slot
+      // list — can't land tighter than the instructor can actually travel.
       const conflict = await tx.booking.findFirst({
         where: {
           instructorId: input.instructorId,
           status: { in: ["CONFIRMED"] },
-          startsAt: { lt: endsAt },
-          endsAt: { gt: input.startsAt },
+          startsAt: { lt: addMinutes(endsAt, buffer) },
+          endsAt: { gt: addMinutes(input.startsAt, -buffer) },
         },
       });
 
       if (conflict) {
         throw new SlotUnavailableError();
+      }
+
+      if (instructor.maxLessonsPerDay) {
+        const localDate = zonedDateString(input.startsAt);
+        const dayCount = await tx.booking.count({
+          where: {
+            instructorId: input.instructorId,
+            status: { in: ["CONFIRMED"] },
+            startsAt: {
+              gte: zonedTimeToUtc(localDate, "00:00"),
+              lt: zonedTimeToUtc(nextDate(localDate), "00:00"),
+            },
+          },
+        });
+        if (dayCount >= instructor.maxLessonsPerDay) {
+          throw new DailyLimitReachedError();
+        }
       }
 
       // Consume any hold covering this slot, whoever placed it: leaving it
@@ -350,6 +448,45 @@ export class SlotUnavailableError extends Error {
   }
 }
 
+/** Thrown when the instructor has hit their self-imposed lessons-per-day cap. */
+export class DailyLimitReachedError extends Error {
+  constructor() {
+    super("Instructor is fully booked that day");
+    this.name = "DailyLimitReachedError";
+  }
+}
+
+/** Thrown when a time falls outside the instructor's working hours. */
+export class OutsideAvailabilityError extends Error {
+  constructor() {
+    super("That time is outside the instructor's working hours");
+    this.name = "OutsideAvailabilityError";
+  }
+}
+
+/**
+ * Is this window inside the instructor's actual working hours, accounting for
+ * blackouts and one-off overrides?
+ *
+ * Slot search only ever proposes times from the availability pattern, but
+ * holds and reschedules took a time and used it, so a lesson could be moved to
+ * 3am on a day the instructor was on leave.
+ */
+export async function isWithinAvailability(
+  instructorId: string,
+  startsAt: Date,
+  endsAt: Date
+): Promise<boolean> {
+  const windows = await getInstructorAvailability(
+    instructorId,
+    startOfLocalDay(startsAt),
+    addMinutes(startOfLocalDay(endsAt), 24 * 60)
+  );
+  return windows.some(
+    (w) => startsAt >= w.startsAt && endsAt <= w.endsAt
+  );
+}
+
 /**
  * Prisma has no mapped error code for an exclusion violation, and the shape it
  * surfaces varies by driver, so match on the SQLSTATE and the constraint name
@@ -368,7 +505,7 @@ export function isExclusionViolation(error: unknown): boolean {
 }
 
 export async function cancelBooking(bookingId: string, reason?: string) {
-  return prisma.booking.update({
+  const booking = await prisma.booking.update({
     where: { id: bookingId },
     data: {
       status: "CANCELLED",
@@ -376,6 +513,20 @@ export async function cancelBooking(bookingId: string, reason?: string) {
       cancellationReason: reason,
     },
   });
+
+  // Offer the freed slot to anyone waiting for it. Best-effort and never
+  // allowed to fail the cancellation itself — notifyWaitlistForSlot swallows
+  // its own errors, and this only fires for lessons still in the future.
+  if (booking.startsAt > new Date()) {
+    const { notifyWaitlistForSlot } = await import("@/app/lib/waitlist");
+    await notifyWaitlistForSlot({
+      instructorId: booking.instructorId,
+      startsAt: booking.startsAt,
+      endsAt: booking.endsAt,
+    });
+  }
+
+  return booking;
 }
 
 export async function rescheduleBooking(
@@ -396,6 +547,14 @@ export async function rescheduleBooking(
     throw new Error("Booking must end after it starts");
   }
 
+  // Rescheduling only checked for a clashing booking, so a lesson could be
+  // moved to 3am, or onto a day the instructor had blacked out.
+  if (!(await isWithinAvailability(booking.instructorId, newStartsAt, endsAt))) {
+    throw new OutsideAvailabilityError();
+  }
+
+  const buffer = booking.instructor.travelBufferMinutes ?? 0;
+
   // Same race as createBooking: check and write together, and let the
   // exclusion constraint be the real arbiter.
   try {
@@ -405,8 +564,8 @@ export async function rescheduleBooking(
           id: { not: bookingId },
           instructorId: booking.instructorId,
           status: { in: ["CONFIRMED"] },
-          startsAt: { lt: endsAt },
-          endsAt: { gt: newStartsAt },
+          startsAt: { lt: addMinutes(endsAt, buffer) },
+          endsAt: { gt: addMinutes(newStartsAt, -buffer) },
         },
       });
 
