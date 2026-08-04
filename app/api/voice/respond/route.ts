@@ -61,15 +61,15 @@ function buildTwiML(sayText: string, gather = true, handoffNumber: string, trans
     .replace(/>/g, "&gt;");
 
   let twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n`;
-  twiml += `  <Say voice="Polly.Joanna" language="en-GB">${escaped}</Say>\n`;
+  twiml += `  <Say voice="Polly.Amy" language="en-GB">${escaped}</Say>\n`;
 
   if (transferNumber) {
     twiml += `  <Dial>${transferNumber}</Dial>\n`;
   } else if (gather) {
     twiml += `  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="auto" maxSpeechTime="15">\n`;
-    twiml += `    <Say voice="Polly.Joanna" language="en-GB">Please go ahead.</Say>\n`;
+    twiml += `    <Say voice="Polly.Amy" language="en-GB">Please go ahead.</Say>\n`;
     twiml += `  </Gather>\n`;
-    twiml += `  <Say voice="Polly.Joanna" language="en-GB">I didn't catch that. I'll transfer you to a human.</Say>\n`;
+    twiml += `  <Say voice="Polly.Amy" language="en-GB">I didn't catch that. I'll transfer you to a human.</Say>\n`;
     twiml += `  <Dial>${handoffNumber}</Dial>\n`;
   }
 
