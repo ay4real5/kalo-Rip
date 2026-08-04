@@ -15,6 +15,7 @@ type Row = Record<string, unknown>;
 const db = {
   customers: [] as Row[],
   bookings: [] as Row[],
+  slots: [] as Row[],
 };
 
 const calls = { updates: [] as Row[], created: [] as Row[] };
@@ -62,7 +63,7 @@ vi.mock("@/app/lib/booking-engine", () => ({
   cancelBooking: vi.fn(async (id: string) => ({ id, status: "CANCELLED" })),
   holdSlot: vi.fn(async () => ({ holdId: "hold-1", expiresAt: new Date() })),
   releaseHold: vi.fn(async () => undefined),
-  searchAvailableSlots: vi.fn(async () => []),
+  searchAvailableSlots: vi.fn(async () => db.slots),
   SlotUnavailableError: class SlotUnavailableError extends Error {},
 }));
 
@@ -98,6 +99,7 @@ beforeEach(() => {
     status: "CONFIRMED",
     instructor: { user: { name: "Sam" } },
   };
+  db.slots = [];
   db.bookings = [
     { id: "booking-mine", customerId: "cust-1", ...lesson },
     { id: STRANGER_BOOKING, customerId: "cust-2", ...lesson },
@@ -254,6 +256,58 @@ describe("confirm_booking", () => {
       ctx()
     )) as Row;
     expect(result.error).toMatch(/identified/i);
+  });
+});
+
+describe("search_available_lesson_slots", () => {
+  it("gives the agent a spoken UK local time, not a raw UTC timestamp", async () => {
+    // Found by a live call: handed only ISO instants, the model read the UTC
+    // clock time out as the lesson time — offering 8am for a 9am lesson
+    // through BST — and invented the date. `when` is the spoken form.
+    db.slots = [
+      {
+        instructorId: "inst-1",
+        instructorName: "Jane",
+        startsAt: new Date("2026-08-05T08:00:00.000Z"), // 09:00 UK, BST
+        endsAt: new Date("2026-08-05T09:00:00.000Z"),
+        pricePence: 3800,
+        vehicleType: "Corsa",
+        postcode: "CR0 1AA",
+      },
+    ];
+
+    const [slot] = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row[];
+
+    expect(slot.when).toContain("9:00");
+    expect(slot.when).toContain("Wednesday");
+    expect(slot.when).toContain("5 August");
+    expect(slot.when).not.toContain("8:00");
+    // The machine-readable instant is still there for hold/confirm to use.
+    expect(slot.startsAt).toBe("2026-08-05T08:00:00.000Z");
+  });
+
+  it("uses GMT in winter", async () => {
+    db.slots = [
+      {
+        instructorId: "inst-1",
+        instructorName: "Jane",
+        startsAt: new Date("2026-01-07T09:00:00.000Z"), // 09:00 UK, GMT
+        endsAt: new Date("2026-01-07T10:00:00.000Z"),
+        pricePence: 3800,
+        vehicleType: "Corsa",
+        postcode: "CR0 1AA",
+      },
+    ];
+    const [slot] = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row[];
+    expect(slot.when).toContain("9:00");
   });
 });
 

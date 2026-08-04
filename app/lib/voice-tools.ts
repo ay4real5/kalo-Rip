@@ -7,6 +7,7 @@ import {
   SlotUnavailableError,
 } from "@/app/lib/booking-engine";
 import { sendBookingConfirmation } from "@/app/lib/notifications";
+import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
 import type { Customer, Instructor, Booking } from "@prisma/client";
 
 type BookingWithInstructor = {
@@ -74,6 +75,26 @@ const NEEDS_IDENTITY = {
   error:
     "No caller identified yet. Call identify_customer or create_customer first; if the caller withheld their number, transfer to a human.",
 } as const;
+
+/**
+ * A slot time as it should be spoken to a caller, in UK local time.
+ *
+ * Tool results carry UTC instants for the machine to act on, but the model
+ * reads whatever it is given. Handed a bare ISO string it announced the UTC
+ * clock time as the lesson time — an hour early throughout BST — and guessed
+ * at the date.
+ */
+function describeSlot(startsAt: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: SCHOOL_TIMEZONE,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(startsAt);
+}
 
 /**
  * Match a customer by calling number.
@@ -187,7 +208,8 @@ export const voiceTools: ToolDefinition[] = [
   {
     name: "search_available_lesson_slots",
     description:
-      "Search for genuine available driving-lesson slots. Never invent availability. Returns up to 20 slots.",
+      "Search for genuine available driving-lesson slots. Never invent availability. Returns up to 20 slots. " +
+      "Read the `when` field aloud verbatim — it is already in UK local time. Never read startsAt/endsAt to the caller.",
     parameters: {
       type: "object",
       properties: {
@@ -218,9 +240,14 @@ export const voiceTools: ToolDefinition[] = [
         preferredDate: preferredDate ? new Date(String(preferredDate)) : undefined,
         lessonType: (lessonType as "REGULAR" | "INTENSIVE" | "TEST" | "REFRESHER") ?? "REGULAR",
       });
+      // `when` is what the agent reads out. The ISO instants are UTC, and the
+      // model was speaking them as if they were local time — offering "8am"
+      // for a 9am lesson through BST, and inventing the date. Give it the
+      // spoken form directly rather than expecting it to convert.
       return slots.map((s) => ({
         instructorId: s.instructorId,
         instructorName: s.instructorName,
+        when: describeSlot(s.startsAt),
         startsAt: s.startsAt.toISOString(),
         endsAt: s.endsAt.toISOString(),
         pricePence: s.pricePence,
@@ -293,6 +320,7 @@ export const voiceTools: ToolDefinition[] = [
 
         return {
           bookingId: booking.id,
+          when: describeSlot(booking.startsAt),
           startsAt: booking.startsAt.toISOString(),
           endsAt: booking.endsAt.toISOString(),
           instructor: booking.instructor.user.name,
@@ -367,6 +395,7 @@ export const voiceTools: ToolDefinition[] = [
       });
       return bookings.map((b) => ({
         bookingId: b.id,
+        when: describeSlot(b.startsAt),
         startsAt: b.startsAt.toISOString(),
         endsAt: b.endsAt.toISOString(),
         instructorName: b.instructor.user.name,
