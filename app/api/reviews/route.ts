@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { rateLimit, getClientIp } from "@/app/lib/rate-limit";
+import { authorize } from "@/app/lib/auth/api";
 import { z } from "zod";
 
-// Public: submit a review for a completed booking
+// Submit a review for a lesson you took.
 const createSchema = z.object({
   bookingId: z.string(),
   rating: z.number().int().min(1).max(5),
@@ -18,13 +19,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
+    // Reviews drive the ratings shown on the public instructor listing. This
+    // used to be unauthenticated, so anyone who knew or guessed a booking id
+    // could post a rating for a lesson they had nothing to do with.
+    const { user, error } = await authorize();
+    if (error) return error;
+
+    const customer = await prisma.customer.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!customer) {
+      return NextResponse.json(
+        { error: "Only the learner who took the lesson can review it" },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const parsed = createSchema.parse(body);
 
     const booking = await prisma.booking.findUnique({
       where: { id: parsed.bookingId },
+      select: { id: true, customerId: true, instructorId: true, status: true },
     });
-    if (!booking) {
+    // Same answer for "not yours" as for "doesn't exist", so booking ids
+    // can't be probed through this endpoint.
+    if (!booking || booking.customerId !== customer.id) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
     if (booking.status !== "COMPLETED") {

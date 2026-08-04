@@ -297,6 +297,8 @@ export async function holdSlot(
     throw new Error("Hold must end after it starts");
   }
 
+  assertBookableDate(startsAt);
+
   // A hold used to be written for any time at all, so the agent could reserve
   // — and then confirm — a slot that was already booked or outside working
   // hours. Validate before reserving.
@@ -360,6 +362,8 @@ export async function createBooking(input: BookingInput) {
   if (endsAt <= input.startsAt) {
     throw new Error("Booking must end after it starts");
   }
+
+  assertBookableDate(input.startsAt);
 
   // The conflict check and the insert must be one atomic step. Previously the
   // check ran before the transaction, so two callers confirming the same slot
@@ -464,6 +468,42 @@ export class OutsideAvailabilityError extends Error {
   }
 }
 
+/** Thrown for a lesson time in the past, or absurdly far ahead. */
+export class InvalidLessonDateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidLessonDateError";
+  }
+}
+
+/** How far ahead a lesson may be booked. */
+const MAX_BOOKING_HORIZON_DAYS = 180;
+
+/**
+ * Reject lesson times that cannot be real.
+ *
+ * The voice agent is told only to offer slots the search returned, but a
+ * language model will still occasionally produce a date of its own: a live
+ * test booked a lesson for 30 October *2023*, a date never offered, which
+ * passed every other check because it happened to be a Monday and the
+ * instructor works Mondays. Availability and conflict checks say nothing about
+ * whether a date is plausible, so this does.
+ */
+function assertBookableDate(startsAt: Date) {
+  if (Number.isNaN(startsAt.getTime())) {
+    throw new InvalidLessonDateError("That date could not be understood");
+  }
+  if (startsAt.getTime() <= Date.now()) {
+    throw new InvalidLessonDateError("Lessons cannot be booked in the past");
+  }
+  const horizon = addMinutes(new Date(), MAX_BOOKING_HORIZON_DAYS * 24 * 60);
+  if (startsAt > horizon) {
+    throw new InvalidLessonDateError(
+      `Lessons cannot be booked more than ${MAX_BOOKING_HORIZON_DAYS} days ahead`
+    );
+  }
+}
+
 /**
  * Is this window inside the instructor's actual working hours, accounting for
  * blackouts and one-off overrides?
@@ -546,6 +586,8 @@ export async function rescheduleBooking(
   if (endsAt <= newStartsAt) {
     throw new Error("Booking must end after it starts");
   }
+
+  assertBookableDate(newStartsAt);
 
   // Rescheduling only checked for a clashing booking, so a lesson could be
   // moved to 3am, or onto a day the instructor had blacked out.

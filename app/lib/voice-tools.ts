@@ -2,6 +2,8 @@ import { prisma } from "@/app/lib/prisma";
 import {
   createBooking,
   holdSlot,
+  InvalidLessonDateError,
+  OutsideAvailabilityError,
   releaseHold,
   searchAvailableSlots,
   SlotUnavailableError,
@@ -73,7 +75,9 @@ async function linkCustomerToCall(ctx: CallContext, customerId: string) {
 
 const NEEDS_IDENTITY = {
   error:
-    "No caller identified yet. Call identify_customer or create_customer first; if the caller withheld their number, transfer to a human.",
+    "No caller identified yet. Call create_customer now with the caller's name, postcode and transmission, then retry this call. " +
+    "If the caller withheld their number, transfer to a human instead.",
+  nextStep: "create_customer",
 } as const;
 
 /**
@@ -259,12 +263,40 @@ export const voiceTools: ToolDefinition[] = [
       required: ["instructorId", "startsAt", "endsAt"],
     },
     handler: async ({ instructorId, startsAt, endsAt }, ctx) => {
-      return holdSlot(
-        String(instructorId),
-        new Date(String(startsAt)),
-        new Date(String(endsAt)),
-        hasCallerId(ctx) ? ctx.fromNumber : undefined
-      );
+      const start = new Date(String(startsAt));
+      const end = new Date(String(endsAt));
+
+      try {
+        const held = await holdSlot(
+          String(instructorId),
+          start,
+          end,
+          hasCallerId(ctx) ? ctx.fromNumber : undefined
+        );
+        // Hand the exact values back. Returning only a hold id left the model
+        // to remember the times itself, and it would sometimes go back and
+        // search again rather than confirm what it had just reserved.
+        return {
+          ...held,
+          instructorId: String(instructorId),
+          startsAt: start.toISOString(),
+          endsAt: end.toISOString(),
+          when: describeSlot(start),
+          nextStep:
+            "Read the slot back, then call confirm_booking with exactly these instructorId, startsAt and endsAt values.",
+        };
+      } catch (error) {
+        if (error instanceof InvalidLessonDateError) {
+          return {
+            error: `${error.message}. Use the exact startsAt value from search_available_lesson_slots.`,
+            nextStep: "search_available_lesson_slots",
+          };
+        }
+        if (error instanceof SlotUnavailableError || error instanceof OutsideAvailabilityError) {
+          return { error: error.message, nextStep: "search_available_lesson_slots" };
+        }
+        throw error;
+      }
     },
   },
   {
@@ -320,6 +352,15 @@ export const voiceTools: ToolDefinition[] = [
         if (error instanceof SlotUnavailableError) {
           return {
             error: "That slot was taken while you were confirming. Search again.",
+          };
+        }
+        // The model sometimes produces a date of its own rather than copying
+        // one from the search results. Send it back to the list instead of
+        // failing the call.
+        if (error instanceof InvalidLessonDateError) {
+          return {
+            error: `${error.message}. Use the exact startsAt value from search_available_lesson_slots — do not work out a date yourself.`,
+            nextStep: "search_available_lesson_slots",
           };
         }
         throw error;

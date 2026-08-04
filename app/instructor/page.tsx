@@ -36,7 +36,6 @@ interface Instructor {
   maxLessonsPerDay: number;
   acceptsNewLearners: boolean;
   offersIntensive: boolean;
-  autoConfirm: boolean;
   active: boolean;
 }
 

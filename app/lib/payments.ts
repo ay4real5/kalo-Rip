@@ -65,13 +65,7 @@ export async function createPaymentSession(_params: {
   return { url: null, sessionId: null };
 }
 
-export async function markBookingPaid(bookingId: string, sessionId: string): Promise<void> {
-  const { prisma } = await import("@/app/lib/prisma");
-  await prisma.booking.update({
-    where: { id: bookingId },
-    data: {
-      paidAt: new Date(),
-      paymentReference: sessionId,
-    },
-  });
-}
+// markBookingPaid was removed with the payment routes. It wrote payment state
+// directly, which is exactly what must not be reachable while payments are on
+// hold — and on revival that write belongs behind a verified webhook, not in a
+// helper anything can call.

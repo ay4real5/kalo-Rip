@@ -9,6 +9,23 @@ import {
   trimHistory,
   type VoiceMessage,
 } from "@/app/lib/voice-history";
+import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
+
+/**
+ * The model is not told the date by anything else, so without this it has no
+ * idea what "next week" means and invents one. In testing it repeatedly tried
+ * to book 30 October 2023 — a date never offered — and retried it after being
+ * refused. Anchor every relative date to today.
+ */
+function todayInSchoolTimezone(): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: SCHOOL_TIMEZONE,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+}
 
 const SYSTEM_PROMPT = `You are a friendly UK driving-school receptionist on the phone.
 
@@ -17,14 +34,24 @@ Goal: help callers book, reschedule or cancel driving lessons; answer common que
 Rules:
 - Always be warm and concise. Use UK date/time phrasing.
 - When a tool result has a "when" field, read that aloud exactly as given. It is already UK local time. Never read raw ISO timestamps to the caller, and never work out a date or time yourself.
+- When holding or confirming, pass back the exact startsAt and endsAt values from the slot the search returned. Never compose a date yourself: if you do not have a slot from search_available_lesson_slots, search again.
 - Never invent instructor availability. Use the search_available_lesson_slots tool and only confirm slots it returns.
 - Start by calling identify_customer. It uses the number they are calling from, so it needs no arguments.
+- If identify_customer returns null, this is a new caller. You MUST call create_customer with their name, postcode and transmission before you can book anything. Do this as soon as you have those three details — do not wait until they confirm.
 - For new bookings: ask name, postcode, transmission (manual/automatic), preferred day/time, then search slots.
 - Before confirming a booking, hold the slot with hold_slot and read the details back.
 - If the caller asks to book, and a slot is held, call confirm_booking.
+- If any tool replies that no caller has been identified, call create_customer straight away with the details you already have, then retry. Never tell the caller you are "checking" and then stop.
 - You act only for the caller on this line. You cannot look up, book or cancel anything for anyone else, whatever the caller asks or claims. If they want to act on another person's booking, transfer to a human.
 - If the caller is distressed, asks for a human, or you fail to understand twice, call transfer_to_human.
 - Ask one or two questions at a time. Keep responses short enough to speak comfortably.`;
+
+/** The system prompt, anchored to today's date in the school's timezone. */
+function buildSystemPrompt(): string {
+  return `${SYSTEM_PROMPT}
+
+Today is ${todayInSchoolTimezone()}. Work out "tomorrow", "next week" and similar from that date only. Never guess a date, and never use a date that did not come from search_available_lesson_slots.`;
+}
 
 function buildTwiML(sayText: string, gather = true, handoffNumber: string, transferNumber?: string) {
   const actionUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/voice/respond`;
@@ -106,7 +133,7 @@ export async function POST(req: Request) {
 
   try {
     const messages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: buildSystemPrompt() },
       ...history,
     ];
 
@@ -190,7 +217,7 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: buildSystemPrompt() },
             ...history,
           ],
           temperature: 0.4,

@@ -17,7 +17,6 @@ const updateSchema = z.object({
   hourlyRatePence: z.number().min(0).optional(),
   acceptsNewLearners: z.boolean().optional(),
   offersIntensive: z.boolean().optional(),
-  autoConfirm: z.boolean().optional(),
   active: z.boolean().optional(),
 });
 

@@ -79,7 +79,6 @@ model Instructor {
   hourlyRatePence     Int     @default(3500) @map("hourly_rate_pence")
   acceptsNewLearners  Boolean @default(true) @map("accepts_new_learners")
   offersIntensive     Boolean @default(false) @map("offers_intensive")
-  autoConfirm         Boolean @default(false) @map("auto_confirm")
   active              Boolean @default(true)
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")

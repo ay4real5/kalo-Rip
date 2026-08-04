@@ -21,7 +21,6 @@ interface Instructor {
   maxLessonsPerDay: number;
   acceptsNewLearners: boolean;
   offersIntensive: boolean;
-  autoConfirm: boolean;
   active: boolean;
 }
 
@@ -55,7 +54,6 @@ export function ProfileEditor({ instructor, onUpdate }: ProfileEditorProps) {
         hourlyRatePence: profile.hourlyRatePence,
         acceptsNewLearners: profile.acceptsNewLearners,
         offersIntensive: profile.offersIntensive,
-        autoConfirm: profile.autoConfirm,
       }),
     });
     if (res.ok) {
@@ -202,15 +200,6 @@ export function ProfileEditor({ instructor, onUpdate }: ProfileEditorProps) {
               className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
             />
             Offers intensive courses
-          </label>
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={profile.autoConfirm}
-              onChange={(e) => setProfile({ ...profile, autoConfirm: e.target.checked })}
-              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-            />
-            Auto-confirm bookings
           </label>
         </div>
         <div className="sm:col-span-2">
