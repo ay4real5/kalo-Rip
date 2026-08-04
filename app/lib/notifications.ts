@@ -1,19 +1,9 @@
 import type { Booking, Customer, Instructor } from "@prisma/client";
-import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
+import { formatLessonTime } from "@/app/lib/timezone";
 
-// Without an explicit timeZone this formats in the server's zone, so on Vercel
-// every confirmation and reminder quoted the lesson an hour early through BST.
-function formatBookingTime(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: SCHOOL_TIMEZONE,
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-  }).format(date);
-}
+// Shared formatter — see the note on formatLessonTime for why this must never
+// be a bare Intl.DateTimeFormat.
+const formatBookingTime = formatLessonTime;
 
 /**
  * Send an SMS via Twilio. Returns true if sent, false if Twilio is not configured

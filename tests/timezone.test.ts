@@ -3,8 +3,12 @@ import {
   calendarDateOf,
   dayOfWeekFor,
   eachDateInRange,
+  formatCalendarDate,
+  formatLessonClock,
+  formatLessonTime,
   nextDate,
   startOfLocalDay,
+  toDateTimeLocalValue,
   zonedDateString,
   zonedTimeToUtc,
 } from "@/app/lib/timezone";
@@ -138,6 +142,59 @@ describe("dayOfWeekFor", () => {
 describe("calendarDateOf", () => {
   it("reads a date-only column as the day it stands for", () => {
     expect(calendarDateOf(new Date("2026-08-05T00:00:00.000Z"))).toBe("2026-08-05");
+  });
+});
+
+describe("display formatters", () => {
+  // These reach a human: SMS, email, the phone agent, every dashboard. The
+  // recurring bug was formatting without a timeZone, which silently uses the
+  // server's zone — UTC on Vercel, so an hour early for all of BST.
+  const summer = new Date("2026-08-05T08:00:00.000Z"); // 09:00 UK, BST
+  const winter = new Date("2026-01-07T09:00:00.000Z"); // 09:00 UK, GMT
+
+  it("formats a lesson time in UK local time, in both BST and GMT", () => {
+    expect(formatLessonTime(summer)).toBe("Wednesday 5 August at 9:00 am");
+    expect(formatLessonTime(winter)).toBe("Wednesday 7 January at 9:00 am");
+  });
+
+  it("formats a bare clock time in UK local time", () => {
+    expect(formatLessonClock(summer)).toBe("9:00 am");
+    expect(formatLessonClock(winter)).toBe("9:00 am");
+  });
+
+  it("does not drift when the process runs in UTC", () => {
+    // vitest pins TZ=UTC to mirror Vercel. If these ever start reading 8:00,
+    // an explicit timeZone has been dropped somewhere.
+    expect(formatLessonTime(summer)).toContain("9:00");
+    expect(formatLessonTime(summer)).not.toContain("8:00");
+  });
+
+  it("renders a date-only column in UTC so the day cannot slip", () => {
+    // Blackouts are stored at midnight UTC standing for a whole local day.
+    expect(formatCalendarDate(new Date("2026-08-05T00:00:00.000Z"))).toBe(
+      "Wednesday, 5 August 2026"
+    );
+  });
+});
+
+describe("toDateTimeLocalValue", () => {
+  it("produces a school-time wall clock for a datetime-local input", () => {
+    expect(toDateTimeLocalValue(new Date("2026-08-05T08:00:00.000Z"))).toBe(
+      "2026-08-05T09:00"
+    );
+    expect(toDateTimeLocalValue(new Date("2026-01-07T09:00:00.000Z"))).toBe(
+      "2026-01-07T09:00"
+    );
+  });
+
+  it("round-trips through zonedTimeToUtc unchanged", () => {
+    // This is the property the reschedule dialog depends on: what the admin
+    // sees is what gets submitted, whatever zone their machine is in.
+    for (const iso of ["2026-08-05T08:00:00.000Z", "2026-01-07T09:00:00.000Z"]) {
+      const instant = new Date(iso);
+      const [date, time] = toDateTimeLocalValue(instant).split("T");
+      expect(zonedTimeToUtc(date, time).toISOString()).toBe(iso);
+    }
   });
 });
 

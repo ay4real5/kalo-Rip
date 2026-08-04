@@ -1,3 +1,5 @@
+import { formatLessonClock, formatLessonTime } from "@/app/lib/timezone";
+
 interface EmailParams {
   to: string;
   subject: string;
@@ -62,17 +64,11 @@ export function bookingConfirmationHtml({
   pricePence: number;
   customerName: string;
 }) {
-  const start = new Date(startsAt).toLocaleString("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const end = new Date(endsAt).toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Formatted in the school's timezone, not the server's. Without that these
+  // quoted the lesson an hour early throughout BST, on the confirmation the
+  // learner keeps.
+  const start = formatLessonTime(new Date(startsAt));
+  const end = formatLessonClock(new Date(endsAt));
   const price = `£${(pricePence / 100).toFixed(2)}`;
 
   return `

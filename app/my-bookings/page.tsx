@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
 import { Card } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { Badge } from "@/app/components/ui/Badge";
@@ -237,7 +238,7 @@ function BookingCard({
           </div>
           <div>
             <div className="font-semibold text-slate-900 dark:text-slate-100">
-              {start.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              {start.toLocaleString("en-GB", { timeZone: SCHOOL_TIMEZONE, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
             </div>
             <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatCalendarDate } from "@/app/lib/timezone";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { useToast } from "@/app/components/ToastProvider";
@@ -84,7 +85,7 @@ export function BlackoutsTab({ instructorId }: { instructorId: string }) {
                 >
                   <div>
                     <div className="font-semibold text-slate-900 dark:text-slate-100">
-                      {new Date(b.date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                      {formatCalendarDate(new Date(b.date))}
                     </div>
                     {b.reason && <div className="text-sm text-slate-500 dark:text-slate-400">{b.reason}</div>}
                   </div>

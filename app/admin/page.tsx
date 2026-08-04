@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SCHOOL_TIMEZONE, toDateTimeLocalValue, zonedTimeToUtc } from "@/app/lib/timezone";
 import {
   CalendarDays,
   Users,
@@ -60,6 +61,7 @@ function formatCurrency(pence: number) {
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("en-GB", {
+    timeZone: SCHOOL_TIMEZONE,
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -84,18 +86,19 @@ export default function AdminDashboard() {
   const [rescheduling, setRescheduling] = useState(false);
 
   function startReschedule(id: string, currentStartsAt: string) {
-    const dt = new Date(currentStartsAt);
-    const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
+    // In school time, matching what the rest of the page shows. Deriving this
+    // from the browser's offset meant an admin outside the UK saw one time and
+    // submitted another.
     setReschedule({ id, startsAt: currentStartsAt });
-    setRescheduleValue(local);
+    setRescheduleValue(toDateTimeLocalValue(new Date(currentStartsAt)));
   }
 
   async function submitReschedule() {
     if (!reschedule) return;
     setRescheduling(true);
-    const startsAt = new Date(rescheduleValue);
+    // The input holds a school-time wall clock, so convert back explicitly.
+    const [date, time] = rescheduleValue.split("T");
+    const startsAt = zonedTimeToUtc(date, time);
     const res = await fetch(`/api/bookings/${reschedule.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -484,7 +487,7 @@ export default function AdminDashboard() {
                         </div>
                         <div>
                           <div className="font-medium text-slate-900">{c.fromNumber}</div>
-                          <div className="text-xs text-slate-500">{new Date(c.startedAt).toLocaleString("en-GB")}</div>
+                          <div className="text-xs text-slate-500">{new Date(c.startedAt).toLocaleString("en-GB", { timeZone: SCHOOL_TIMEZONE })}</div>
                         </div>
                       </div>
                       <Badge
@@ -562,7 +565,7 @@ export default function AdminDashboard() {
             <Card padding="lg" className="w-full max-w-md">
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Reschedule booking</h3>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Currently: {new Date(reschedule.startsAt).toLocaleString("en-GB")}
+                Currently: {new Date(reschedule.startsAt).toLocaleString("en-GB", { timeZone: SCHOOL_TIMEZONE })}
               </p>
               <div className="mt-6">
                 <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">New date & time</label>

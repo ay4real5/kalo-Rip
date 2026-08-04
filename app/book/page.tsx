@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
 import { Badge } from "@/app/components/ui/Badge";
@@ -82,6 +83,7 @@ export default function BookPage() {
 
   function formatSlotTime(iso: string) {
     return new Date(iso).toLocaleString("en-GB", {
+      timeZone: SCHOOL_TIMEZONE,
       weekday: "long",
       day: "numeric",
       month: "short",
@@ -244,8 +246,8 @@ export default function BookPage() {
                           <div className="font-semibold text-slate-900">{formatSlotTime(slot.startsAt)}</div>
                           <div className="flex items-center gap-2 text-sm text-slate-500">
                             <Clock size={14} />
-                            {new Date(slot.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} -{" "}
-                            {new Date(slot.endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                            {new Date(slot.startsAt).toLocaleTimeString("en-GB", { timeZone: SCHOOL_TIMEZONE, hour: "2-digit", minute: "2-digit" })} -{" "}
+                            {new Date(slot.endsAt).toLocaleTimeString("en-GB", { timeZone: SCHOOL_TIMEZONE, hour: "2-digit", minute: "2-digit" })}
                           </div>
                         </div>
                       </div>

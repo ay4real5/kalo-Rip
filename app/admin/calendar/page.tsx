@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
 import Link from "next/link";
 import { Card } from "@/app/components/ui/Card";
 import { Button } from "@/app/components/ui/Button";
@@ -158,7 +159,7 @@ export default function CalendarPage() {
                   <li key={b.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-slate-900">
-                        {new Date(b.startsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(b.startsAt).toLocaleTimeString("en-GB", { timeZone: SCHOOL_TIMEZONE, hour: "2-digit", minute: "2-digit" })}
                       </span>
                       <Badge variant={b.status === "CONFIRMED" ? "success" : "neutral"}>{b.status}</Badge>
                     </div>

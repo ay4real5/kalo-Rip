@@ -18,7 +18,15 @@
  * know about local time.
  */
 
-export const SCHOOL_TIMEZONE = process.env.SCHOOL_TIMEZONE ?? "Europe/London";
+/**
+ * The school's operating timezone.
+ *
+ * NEXT_PUBLIC_ first so client components resolve the same value: Next only
+ * inlines NEXT_PUBLIC_ vars into the browser bundle, so a server-only override
+ * would leave the UI showing different times from the SMS and the phone agent.
+ */
+export const SCHOOL_TIMEZONE =
+  process.env.NEXT_PUBLIC_SCHOOL_TIMEZONE ?? process.env.SCHOOL_TIMEZONE ?? "Europe/London";
 
 /** Offset (ms) between the given zone and UTC at a specific instant. */
 function zoneOffsetMs(instant: Date, timeZone: string): number {
@@ -139,4 +147,91 @@ export function startOfLocalDay(
   timeZone: string = SCHOOL_TIMEZONE
 ): Date {
   return zonedTimeToUtc(zonedDateString(instant, timeZone), "00:00", timeZone);
+}
+
+/**
+ * A lesson time as it should be shown or spoken to a person.
+ *
+ *   "Wednesday 5 August at 9:00 am"
+ *
+ * Use this anywhere a time reaches a human — SMS, email, the phone agent, the
+ * dashboards. Formatting a lesson time without an explicit timeZone has been
+ * the single most repeated bug in this codebase: it silently formats in the
+ * server's zone, which is UTC on Vercel, so everything reads an hour early for
+ * the ~7 months the UK is on BST. Reach for this rather than a fresh
+ * Intl.DateTimeFormat; an Intl call outside this module is a smell.
+ */
+export function formatLessonTime(
+  instant: Date,
+  timeZone: string = SCHOOL_TIMEZONE
+): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(instant);
+}
+
+/** Just the day: "Wednesday 5 August 2026". */
+export function formatLessonDate(
+  instant: Date,
+  timeZone: string = SCHOOL_TIMEZONE
+): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(instant);
+}
+
+/** Just the clock time: "9:00 am". */
+export function formatLessonClock(
+  instant: Date,
+  timeZone: string = SCHOOL_TIMEZONE
+): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(instant);
+}
+
+/**
+ * An instant as a `datetime-local` input value ("2026-08-05T09:00") in school
+ * time.
+ *
+ * Pair with `zonedTimeToUtc` to read the value back. Building it from
+ * `getTimezoneOffset` instead uses the *browser's* zone, so an admin outside
+ * the UK would see one time on screen and submit another.
+ */
+export function toDateTimeLocalValue(
+  instant: Date,
+  timeZone: string = SCHOOL_TIMEZONE
+): string {
+  const date = zonedDateString(instant, timeZone);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(instant);
+  return `${date}T${time}`;
+}
+
+/**
+ * A date-only column ("blackout on the 5th") rendered for display.
+ *
+ * These are stored at midnight UTC standing for a whole local day, so they are
+ * formatted in UTC. Formatting them in a zone behind UTC would show the
+ * previous day.
+ */
+export function formatCalendarDate(date: Date): string {
+  return formatLessonDate(date, "UTC");
 }

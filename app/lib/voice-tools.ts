@@ -7,7 +7,7 @@ import {
   SlotUnavailableError,
 } from "@/app/lib/booking-engine";
 import { sendBookingConfirmation } from "@/app/lib/notifications";
-import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
+import { formatLessonTime } from "@/app/lib/timezone";
 import type { Customer, Instructor, Booking } from "@prisma/client";
 
 type BookingWithInstructor = {
@@ -84,17 +84,7 @@ const NEEDS_IDENTITY = {
  * clock time as the lesson time — an hour early throughout BST — and guessed
  * at the date.
  */
-function describeSlot(startsAt: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: SCHOOL_TIMEZONE,
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(startsAt);
-}
+const describeSlot = formatLessonTime;
 
 /**
  * Match a customer by calling number.

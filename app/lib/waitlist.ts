@@ -1,6 +1,11 @@
 import { prisma } from "@/app/lib/prisma";
 import { sendSms } from "@/app/lib/notifications";
-import { SCHOOL_TIMEZONE, calendarDateOf, zonedDateString } from "@/app/lib/timezone";
+import {
+  SCHOOL_TIMEZONE,
+  calendarDateOf,
+  formatLessonTime,
+  zonedDateString,
+} from "@/app/lib/timezone";
 
 /**
  * Waitlist matching.
@@ -22,25 +27,18 @@ export interface FreedSlot {
   endsAt: Date;
 }
 
-/** "17:30" in UK local time, for comparing against a learner's preference. */
+/**
+ * "17:30" in UK local time, for comparing against a learner's preference.
+ *
+ * Deliberately 24-hour and zero-padded, unlike the display formatters: it is
+ * compared lexically against the stored earliestTime/latestTime strings.
+ */
 function localTimeOf(instant: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: SCHOOL_TIMEZONE,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).format(instant);
-}
-
-function formatSlot(instant: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: SCHOOL_TIMEZONE,
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
   }).format(instant);
 }
 
@@ -120,7 +118,7 @@ export async function notifyWaitlistForSlot(
 
       const sent = await sendSms(
         phone,
-        `A driving lesson slot has just opened up: ${formatSlot(slot.startsAt)} with ${instructorName}. ` +
+        `A driving lesson slot has just opened up: ${formatLessonTime(slot.startsAt)} with ${instructorName}. ` +
           `Call us to take it — first to book gets it. Reply STOP to opt out.`
       );
       if (sent) notified++;
