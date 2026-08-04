@@ -12,7 +12,8 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "grant-admin": "tsx scripts/grant-admin.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
