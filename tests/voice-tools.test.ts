@@ -16,6 +16,10 @@ const db = {
   customers: [] as Row[],
   bookings: [] as Row[],
   slots: [] as Row[],
+  coverage: { covered: true, servedAreas: ["CR0", "SE25"] } as {
+    covered: boolean;
+    servedAreas: string[];
+  },
 };
 
 const calls = { updates: [] as Row[], created: [] as Row[] };
@@ -64,7 +68,10 @@ vi.mock("@/app/lib/booking-engine", () => ({
   holdSlot: vi.fn(async () => ({ holdId: "hold-1", expiresAt: new Date() })),
   releaseHold: vi.fn(async () => undefined),
   searchAvailableSlots: vi.fn(async () => db.slots),
+  checkAreaCoverage: vi.fn(async () => db.coverage),
   SlotUnavailableError: class SlotUnavailableError extends Error {},
+  OutsideAvailabilityError: class OutsideAvailabilityError extends Error {},
+  InvalidLessonDateError: class InvalidLessonDateError extends Error {},
 }));
 
 vi.mock("@/app/lib/notifications", () => ({
@@ -100,6 +107,7 @@ beforeEach(() => {
     instructor: { user: { name: "Sam" } },
   };
   db.slots = [];
+  db.coverage = { covered: true, servedAreas: ["CR0", "SE25"] };
   db.bookings = [
     { id: "booking-mine", customerId: "cust-1", ...lesson },
     { id: STRANGER_BOOKING, customerId: "cust-2", ...lesson },
@@ -276,11 +284,12 @@ describe("search_available_lesson_slots", () => {
       },
     ];
 
-    const [slot] = (await executeTool(
+    const { slots } = (await executeTool(
       "search_available_lesson_slots",
       { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
       ctx()
-    )) as Row[];
+    )) as { slots: Row[] };
+    const slot = slots[0];
 
     expect(slot.when).toContain("9:00");
     expect(slot.when).toContain("Wednesday");
@@ -289,6 +298,7 @@ describe("search_available_lesson_slots", () => {
     // The machine-readable instant is still there for hold/confirm to use.
     expect(slot.startsAt).toBe("2026-08-05T08:00:00.000Z");
   });
+
 
   it("uses GMT in winter", async () => {
     db.slots = [
@@ -302,12 +312,98 @@ describe("search_available_lesson_slots", () => {
         postcode: "CR0 1AA",
       },
     ];
-    const [slot] = (await executeTool(
+    const { slots } = (await executeTool(
       "search_available_lesson_slots",
       { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
       ctx()
-    )) as Row[];
-    expect(slot.when).toContain("9:00");
+    )) as { slots: Row[] };
+    expect(slots[0].when).toContain("9:00");
+  });
+
+  it("gives no reason when slots were found", async () => {
+    db.slots = [
+      {
+        instructorId: "inst-1",
+        instructorName: "Jane",
+        startsAt: new Date("2026-08-05T08:00:00.000Z"),
+        endsAt: new Date("2026-08-05T09:00:00.000Z"),
+        pricePence: 3800,
+        vehicleType: "Corsa",
+        postcode: "CR0 1AA",
+      },
+    ];
+    const result = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+    // `reason` is the agent's cue to apologise and offer alternatives. It must
+    // never appear alongside real slots, or the agent talks the caller out of
+    // a booking it could have made.
+    expect(result.reason).toBeUndefined();
+    expect((result.slots as Row[]).length).toBe(1);
+  });
+});
+
+/**
+ * A real call exposed this: a learner in BR6 was told "there are no available
+ * slots at all" and rang off. No instructor covered BR6 — the school simply
+ * doesn't serve Orpington — but an empty list carried no reason, so the agent
+ * couldn't tell "we don't cover you" from "we're full" and dead-ended a lead.
+ */
+describe("search_available_lesson_slots — empty results carry a reason", () => {
+  it("says AREA_NOT_COVERED when no instructor serves the postcode", async () => {
+    db.slots = [];
+    db.coverage = { covered: false, servedAreas: ["CR0", "CR7", "SE25"] };
+
+    const result = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "BR6 5XF", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+
+    expect(result.reason).toBe("AREA_NOT_COVERED");
+    expect(result.servedAreas).toEqual(["CR0", "CR7", "SE25"]);
+    // The agent needs the caller's own area named back to sound credible.
+    expect(String(result.message)).toContain("BR6");
+    expect(String(result.message)).toContain("CR0");
+  });
+
+  it("says NO_AVAILABILITY when the area is covered but nothing is free", async () => {
+    db.slots = [];
+    db.coverage = { covered: true, servedAreas: ["CR0", "SE25"] };
+
+    const result = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+
+    expect(result.reason).toBe("NO_AVAILABILITY");
+    expect(String(result.message).toLowerCase()).toContain("waitlist");
+  });
+
+  it("distinguishes the two cases rather than collapsing them", async () => {
+    // The whole point: same empty list, different advice to the caller.
+    db.slots = [];
+
+    db.coverage = { covered: false, servedAreas: ["CR0"] };
+    const uncovered = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "BR6 5XF", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+
+    db.coverage = { covered: true, servedAreas: ["CR0"] };
+    const full = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+
+    expect(uncovered.reason).not.toBe(full.reason);
+    expect((uncovered.slots as Row[]).length).toBe(0);
+    expect((full.slots as Row[]).length).toBe(0);
   });
 });
 
