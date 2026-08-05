@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { createBooking } from "@/app/lib/booking-engine";
-import { sendEmail, bookingConfirmationHtml } from "@/app/lib/email";
-import { sendBookingConfirmation } from "@/app/lib/notifications";
+import { securePendingBooking } from "@/app/lib/booking-engine";
+import { sendEmail, pendingBookingHtml } from "@/app/lib/email";
+import { notifyAdminOfPendingBooking } from "@/app/lib/notifications";
 import { rateLimit, getClientIp } from "@/app/lib/rate-limit";
 import { authorize } from "@/app/lib/auth/api";
 import { z } from "zod";
@@ -13,7 +13,9 @@ const createSchema = z.object({
   phone: z.string().min(1),
   postcode: z.string().min(1),
   transmission: z.enum(["MANUAL", "AUTOMATIC", "BOTH"]).default("MANUAL"),
-  instructorId: z.string(),
+  /// Accepted for backwards compatibility and ignored — the admin picks the
+  /// driver, so a client cannot choose one.
+  instructorId: z.string().optional(),
   startsAt: z.string(),
   endsAt: z.string().optional(),
   lessonType: z.enum(["REGULAR", "INTENSIVE", "TEST", "REFRESHER"]).default("REGULAR"),
@@ -37,7 +39,13 @@ export async function GET(request: Request) {
 
     const where = {
       ...(status
-        ? { status: status as "CONFIRMED" | "COMPLETED" | "CANCELLED" }
+        ? {
+            status: status as
+              | "PENDING_ASSIGNMENT"
+              | "CONFIRMED"
+              | "COMPLETED"
+              | "CANCELLED",
+          }
         : {}),
       ...(user.role === "ADMIN" ? {} : { instructor: { userId: user.id } }),
     };
@@ -100,22 +108,26 @@ export async function POST(request: Request) {
       },
     });
 
-    const booking = await createBooking({
+    // Web bookings secure a time and join the same assignment queue as phone
+    // enquiries, so every lesson is allocated by an admin and no route
+    // bypasses that. The instructorId a caller may have picked in the UI is
+    // deliberately ignored — choosing the driver is the admin's job.
+    const booking = await securePendingBooking({
       customerId: customer.id,
-      instructorId: parsed.instructorId,
+      postcode: parsed.postcode,
+      transmission: parsed.transmission,
       startsAt: new Date(parsed.startsAt),
       endsAt: parsed.endsAt ? new Date(parsed.endsAt) : undefined,
       lessonType: parsed.lessonType,
       notes: parsed.notes,
-      source: parsed.source,
+      source: parsed.source === "PHONE_AI" ? "PORTAL" : parsed.source,
     });
 
     // Fire and forget — do not block the response on email/SMS
     sendEmail({
       to: parsed.email,
-      subject: "Your driving lesson is booked",
-      html: bookingConfirmationHtml({
-        instructorName: booking.instructor.user.name ?? "Your instructor",
+      subject: "Your driving lesson slot is secured",
+      html: pendingBookingHtml({
         startsAt: booking.startsAt.toISOString(),
         endsAt: booking.endsAt.toISOString(),
         pricePence: booking.pricePence,
@@ -123,11 +135,9 @@ export async function POST(request: Request) {
       }),
     }).catch((err) => console.error("[bookings] email failed:", err));
 
-    sendBookingConfirmation({
-      customer: { ...customer, user },
-      instructor: booking.instructor,
-      booking,
-    }).catch((err) => console.error("[bookings] sms failed:", err));
+    notifyAdminOfPendingBooking(booking).catch((err) =>
+      console.error("[bookings] admin alert failed:", err)
+    );
 
     return NextResponse.json(booking, { status: 201 });
   } catch (error) {

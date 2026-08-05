@@ -69,6 +69,54 @@ export async function sendLessonReminder(opts: {
   return { sent: await sendSms(phone, message) };
 }
 
+/**
+ * Tell the learner their time is held, without naming a driver.
+ *
+ * Deliberately does not say "confirmed with X" — nobody has been assigned yet.
+ * Promising a driver here and changing it later is worse than saying nothing.
+ */
+export async function sendSlotSecured(opts: {
+  customer: Customer & { user?: { name: string | null; phone: string | null } | null };
+  booking: Booking;
+}) {
+  const name = opts.customer.user?.name ?? "";
+  const message =
+    `Hi ${name}, your driving lesson slot on ${formatBookingTime(opts.booking.startsAt)} is secured. ` +
+    `We're matching you with an instructor and they'll be in touch shortly. Reply STOP to opt out.`;
+
+  const phone = opts.customer.user?.phone ?? "";
+  const smsOptIn = (opts.customer as { smsOptIn?: boolean }).smsOptIn !== false;
+  if (!phone || !smsOptIn) return { sent: false };
+  return { sent: await sendSms(phone, message) };
+}
+
+/**
+ * Alert the school that a lesson is waiting to be allocated.
+ *
+ * Goes to the same number as the human handoff — the person who answers
+ * transferred calls is the person who assigns drivers.
+ */
+export async function notifyAdminOfPendingBooking(booking: {
+  id: string;
+  startsAt: Date;
+  customer?: { postcode?: string; transmission?: string; user?: { name: string | null } | null } | null;
+}) {
+  const { getHandoffNumber } = await import("@/app/lib/settings");
+  const to = await getHandoffNumber();
+
+  const who = booking.customer?.user?.name ?? "A learner";
+  const where = booking.customer?.postcode ? ` in ${booking.customer.postcode}` : "";
+  const gearbox = booking.customer?.transmission
+    ? ` (${booking.customer.transmission.toLowerCase()})`
+    : "";
+
+  const message =
+    `New lesson to assign: ${who}${where}${gearbox} — ` +
+    `${formatBookingTime(booking.startsAt)}. Open the admin portal to allocate a driver.`;
+
+  return { sent: await sendSms(to, message) };
+}
+
 export async function sendInstructorNotification(opts: {
   instructor: Instructor & { user?: { name: string | null; phone: string | null } | null };
   message: string;

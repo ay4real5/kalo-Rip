@@ -51,6 +51,15 @@ export async function POST(request: Request) {
     if (booking.status !== "COMPLETED") {
       return NextResponse.json({ error: "Can only review completed lessons" }, { status: 400 });
     }
+    // A review rates the driver, so there has to be one. A completed lesson
+    // always has been assigned, but the type allows null and this keeps the
+    // review table honest.
+    if (!booking.instructorId) {
+      return NextResponse.json(
+        { error: "That lesson has no instructor to review" },
+        { status: 400 }
+      );
+    }
 
     const existing = await prisma.review.findUnique({
       where: { bookingId: parsed.bookingId },

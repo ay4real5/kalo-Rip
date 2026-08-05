@@ -209,6 +209,88 @@ export async function checkAreaCoverage(postcode: string): Promise<{
   return { covered, servedAreas };
 }
 
+/** A time the school can honour, without saying who will teach it. */
+export interface CapacitySlot {
+  startsAt: Date;
+  endsAt: Date;
+  pricePence: number;
+  /** How many eligible drivers are free then. Never exposed to the caller. */
+  freeInstructors: number;
+}
+
+/**
+ * Times the school can commit to, aggregated across every eligible driver.
+ *
+ * The phone agent secures a *time* and an admin picks the driver afterwards,
+ * so the caller must never be offered a named instructor's diary. What matters
+ * is whether at least one driver who covers their area could take it.
+ *
+ * Bookings already secured but not yet assigned count against capacity. Without
+ * that the agent would happily sell 09:00 to five learners when only two
+ * drivers are free, and the admin would be left unable to honour three of them.
+ */
+export async function searchSchoolCapacity(
+  input: SearchSlotInput
+): Promise<CapacitySlot[]> {
+  const startDate =
+    input.startDate ?? input.preferredDate ?? startOfLocalDay(new Date());
+  const endDate =
+    input.endDate ?? addMinutes(startOfLocalDay(startDate), 15 * 24 * 60);
+
+  // Per-instructor availability, reusing the same rules as the direct search:
+  // areas, transmission, working hours, blackouts, buffers and daily caps.
+  const perInstructor = await searchAvailableSlots({
+    ...input,
+    startDate,
+    endDate,
+  });
+
+  // Lessons whose time is sold but whose driver is still to be decided.
+  const unassigned = await prisma.booking.findMany({
+    where: {
+      instructorId: null,
+      status: { in: ["PENDING_ASSIGNMENT"] },
+      startsAt: { lt: endDate },
+      endsAt: { gt: startDate },
+    },
+    select: { startsAt: true, endsAt: true },
+  });
+
+  const byTime = new Map<string, CapacitySlot>();
+  for (const slot of perInstructor) {
+    const key = `${slot.startsAt.toISOString()}|${slot.endsAt.toISOString()}`;
+    const existing = byTime.get(key);
+    if (existing) {
+      existing.freeInstructors += 1;
+      existing.pricePence = Math.min(existing.pricePence, slot.pricePence);
+      continue;
+    }
+    byTime.set(key, {
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      pricePence: slot.pricePence,
+      freeInstructors: 1,
+    });
+  }
+
+  // Spend capacity on anything already promised at that time.
+  for (const booking of unassigned) {
+    for (const slot of byTime.values()) {
+      if (
+        booking.startsAt < slot.endsAt &&
+        booking.endsAt > slot.startsAt
+      ) {
+        slot.freeInstructors -= 1;
+      }
+    }
+  }
+
+  return [...byTime.values()]
+    .filter((s) => s.freeInstructors > 0)
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
+    .slice(0, 20);
+}
+
 async function findEligibleInstructors(input: SearchSlotInput) {
   const transmissionFilter: Prisma.InstructorWhereInput[] = [];
   if (!input.transmission || input.transmission === "BOTH") {
@@ -572,6 +654,153 @@ export function isExclusionViolation(error: unknown): boolean {
   );
 }
 
+export interface SecureSlotInput {
+  customerId: string;
+  postcode: string;
+  transmission?: "MANUAL" | "AUTOMATIC" | "BOTH";
+  startsAt: Date;
+  endsAt?: Date;
+  lessonType?: "REGULAR" | "INTENSIVE" | "TEST" | "REFRESHER";
+  notes?: string;
+  source?: "PHONE_AI" | "PORTAL" | "ADMIN";
+}
+
+/**
+ * Secure a time for a learner without choosing a driver.
+ *
+ * This is what the phone agent and the booking form now do. The learner gets a
+ * real, held time; an admin assigns the driver afterwards. Nothing is promised
+ * that cannot be delivered: the slot must still have a genuinely free,
+ * eligible driver at the moment of booking, counting lessons already secured
+ * but not yet assigned.
+ */
+export async function securePendingBooking(input: SecureSlotInput) {
+  assertBookableDate(input.startsAt);
+
+  const capacity = await searchSchoolCapacity({
+    postcode: input.postcode,
+    transmission: input.transmission,
+    lessonType: input.lessonType,
+    startDate: startOfLocalDay(input.startsAt),
+    endDate: addMinutes(startOfLocalDay(input.startsAt), 24 * 60),
+  });
+
+  const match = capacity.find(
+    (slot) => slot.startsAt.getTime() === input.startsAt.getTime()
+  );
+  if (!match) {
+    throw new SlotUnavailableError();
+  }
+
+  const endsAt = input.endsAt ?? match.endsAt;
+  if (endsAt <= input.startsAt) {
+    throw new Error("Booking must end after it starts");
+  }
+
+  return prisma.booking.create({
+    data: {
+      customerId: input.customerId,
+      instructorId: null,
+      startsAt: input.startsAt,
+      endsAt,
+      status: "PENDING_ASSIGNMENT",
+      pricePence: match.pricePence,
+      lessonType: input.lessonType ?? "REGULAR",
+      notes: input.notes,
+      source: input.source ?? "PHONE_AI",
+    },
+    include: { customer: { include: { user: true } } },
+  });
+}
+
+/** Drivers who could actually take an unassigned lesson. */
+export async function eligibleInstructorsFor(bookingId: string) {
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: { customer: true },
+  });
+  if (!booking) throw new Error("Booking not found");
+
+  const candidates = await searchAvailableSlots({
+    postcode: booking.customer.postcode,
+    transmission: booking.customer.transmission,
+    lessonType: booking.lessonType,
+    startDate: startOfLocalDay(booking.startsAt),
+    endDate: addMinutes(startOfLocalDay(booking.startsAt), 24 * 60),
+  });
+
+  // Only those free at exactly this time. searchAvailableSlots has already
+  // applied areas, transmission, working hours, blackouts, travel buffers and
+  // daily caps, so anything left here is genuinely assignable.
+  const free = candidates.filter(
+    (slot) => slot.startsAt.getTime() === booking.startsAt.getTime()
+  );
+
+  return free.map((slot) => ({
+    instructorId: slot.instructorId,
+    instructorName: slot.instructorName,
+    pricePence: slot.pricePence,
+    vehicleType: slot.vehicleType,
+  }));
+}
+
+/**
+ * Give an unassigned lesson to a driver.
+ *
+ * The exclusion constraint is the real guard here: two admins assigning the
+ * same driver to overlapping lessons at once cannot both win, whatever this
+ * check says.
+ */
+export async function assignInstructor(bookingId: string, instructorId: string) {
+  const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+  if (!booking) throw new Error("Booking not found");
+  if (booking.status === "CANCELLED") {
+    throw new Error("Cannot assign a cancelled booking");
+  }
+
+  const instructor = await prisma.instructor.findUnique({
+    where: { id: instructorId },
+  });
+  if (!instructor) throw new Error("Instructor not found");
+
+  if (!(await isWithinAvailability(instructorId, booking.startsAt, booking.endsAt))) {
+    throw new OutsideAvailabilityError();
+  }
+
+  const buffer = instructor.travelBufferMinutes ?? 0;
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const clash = await tx.booking.findFirst({
+        where: {
+          id: { not: bookingId },
+          instructorId,
+          status: { in: ["CONFIRMED"] },
+          startsAt: { lt: addMinutes(booking.endsAt, buffer) },
+          endsAt: { gt: addMinutes(booking.startsAt, -buffer) },
+        },
+      });
+      if (clash) throw new SlotUnavailableError();
+
+      return tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          instructorId,
+          status: "CONFIRMED",
+          assignedAt: new Date(),
+        },
+        include: {
+          customer: { include: { user: true } },
+          instructor: { include: { user: true } },
+        },
+      });
+    });
+  } catch (error) {
+    if (isExclusionViolation(error)) throw new SlotUnavailableError();
+    throw error;
+  }
+}
+
 export async function cancelBooking(bookingId: string, reason?: string) {
   const booking = await prisma.booking.update({
     where: { id: bookingId },
@@ -585,7 +814,9 @@ export async function cancelBooking(bookingId: string, reason?: string) {
   // Offer the freed slot to anyone waiting for it. Best-effort and never
   // allowed to fail the cancellation itself — notifyWaitlistForSlot swallows
   // its own errors, and this only fires for lessons still in the future.
-  if (booking.startsAt > new Date()) {
+  // An unassigned lesson was never on a driver's diary, so cancelling it frees
+  // nothing for the waitlist to claim.
+  if (booking.startsAt > new Date() && booking.instructorId) {
     const { notifyWaitlistForSlot } = await import("@/app/lib/waitlist");
     await notifyWaitlistForSlot({
       instructorId: booking.instructorId,
@@ -608,8 +839,10 @@ export async function rescheduleBooking(
   });
   if (!booking) throw new Error("Booking not found");
 
-  const endsAt =
-    newEndsAt ?? addMinutes(newStartsAt, booking.instructor.lessonDurationMinutes);
+  const lessonMinutes =
+    booking.instructor?.lessonDurationMinutes ??
+    Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / 60000);
+  const endsAt = newEndsAt ?? addMinutes(newStartsAt, lessonMinutes);
 
   if (endsAt <= newStartsAt) {
     throw new Error("Booking must end after it starts");
@@ -617,27 +850,37 @@ export async function rescheduleBooking(
 
   assertBookableDate(newStartsAt);
 
-  // Rescheduling only checked for a clashing booking, so a lesson could be
-  // moved to 3am, or onto a day the instructor had blacked out.
-  if (!(await isWithinAvailability(booking.instructorId, newStartsAt, endsAt))) {
-    throw new OutsideAvailabilityError();
+  // An unassigned lesson has no working hours to respect yet — the driver who
+  // ends up with it is chosen later, and assignInstructor re-checks then. Only
+  // validate against a diary once there is one.
+  if (booking.instructorId) {
+    // Rescheduling only checked for a clashing booking, so a lesson could be
+    // moved to 3am, or onto a day the instructor had blacked out.
+    if (!(await isWithinAvailability(booking.instructorId, newStartsAt, endsAt))) {
+      throw new OutsideAvailabilityError();
+    }
   }
 
-  const buffer = booking.instructor.travelBufferMinutes ?? 0;
+  const buffer = booking.instructor?.travelBufferMinutes ?? 0;
 
   // Same race as createBooking: check and write together, and let the
   // exclusion constraint be the real arbiter.
   try {
     return await prisma.$transaction(async (tx) => {
-      const conflict = await tx.booking.findFirst({
-        where: {
-          id: { not: bookingId },
-          instructorId: booking.instructorId,
-          status: { in: ["CONFIRMED"] },
-          startsAt: { lt: addMinutes(endsAt, buffer) },
-          endsAt: { gt: addMinutes(newStartsAt, -buffer) },
-        },
-      });
+      // Only meaningful once a driver owns the lesson. Querying with a null
+      // instructorId would match every *other* unassigned booking and report
+      // them as clashes, which they are not — nobody is double-booked.
+      const conflict = booking.instructorId
+        ? await tx.booking.findFirst({
+            where: {
+              id: { not: bookingId },
+              instructorId: booking.instructorId,
+              status: { in: ["CONFIRMED"] },
+              startsAt: { lt: addMinutes(endsAt, buffer) },
+              endsAt: { gt: addMinutes(newStartsAt, -buffer) },
+            },
+          })
+        : null;
 
       if (conflict) throw new SlotUnavailableError();
 

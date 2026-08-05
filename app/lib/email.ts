@@ -51,6 +51,47 @@ export async function sendEmail({ to, subject, html }: EmailParams): Promise<boo
   }
 }
 
+/**
+ * Sent when a time is secured but no driver is assigned yet. Says what is
+ * actually true — the slot is held, the instructor is coming — rather than
+ * naming someone who might change.
+ */
+export function pendingBookingHtml({
+  startsAt,
+  endsAt,
+  pricePence,
+  customerName,
+}: {
+  startsAt: string;
+  endsAt: string;
+  pricePence: number;
+  customerName: string;
+}) {
+  const start = formatLessonTime(new Date(startsAt));
+  const end = formatLessonClock(new Date(endsAt));
+  const price = `£${(pricePence / 100).toFixed(2)}`;
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+      <div style="background: #10b981; color: white; padding: 16px 24px; border-radius: 12px 12px 0 0; font-size: 18px; font-weight: bold;">
+        Your slot is secured
+      </div>
+      <div style="border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 24px;">
+        <p>Hi ${customerName},</p>
+        <p>We've held this time for you. We're matching you with an instructor and they'll be in touch shortly to confirm.</p>
+        <table style="width: 100%; margin: 16px 0; border-collapse: collapse;">
+          <tr><td style="padding: 8px 0; color: #64748b;">Date</td><td style="padding: 8px 0; font-weight: 600;">${start}</td></tr>
+          <tr><td style="padding: 8px 0; color: #64748b;">Ends</td><td style="padding: 8px 0; font-weight: 600;">${end}</td></tr>
+          <tr><td style="padding: 8px 0; color: #64748b;">Price</td><td style="padding: 8px 0; font-weight: 600;">${price}</td></tr>
+          <tr><td style="padding: 8px 0; color: #64748b;">Instructor</td><td style="padding: 8px 0; font-weight: 600;">Being assigned</td></tr>
+        </table>
+        <p style="color: #64748b; font-size: 14px;">Need to change or cancel? Reply to this email or call us.</p>
+        <p style="margin-top: 24px; color: #94a3b8; font-size: 12px;">Kalo Rip — AI receptionist for driving schools.</p>
+      </div>
+    </div>
+  `;
+}
+
 export function bookingConfirmationHtml({
   instructorName,
   startsAt,

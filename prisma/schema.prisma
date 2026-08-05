@@ -135,8 +135,11 @@ model Booking {
   id            String        @id @default(cuid())
   customerId    String        @map("customer_id")
   customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  instructorId  String        @map("instructor_id")
-  instructor    Instructor    @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  /// Null until an admin assigns a driver. The AI secures the *time* on the
+  /// call; who teaches it is decided in the admin portal afterwards.
+  instructorId  String?       @map("instructor_id")
+  instructor    Instructor?   @relation(fields: [instructorId], references: [id], onDelete: SetNull)
+  assignedAt    DateTime?     @map("assigned_at")
   startsAt      DateTime      @map("starts_at")
   endsAt        DateTime      @map("ends_at")
   status        BookingStatus @default(CONFIRMED)
@@ -197,6 +200,9 @@ enum WaitlistStatus {
 }
 
 enum BookingStatus {
+  /// Time secured for the learner, no driver assigned yet. The admin picks one
+  /// in the portal, which moves it to CONFIRMED.
+  PENDING_ASSIGNMENT
   CONFIRMED
   COMPLETED
   CANCELLED

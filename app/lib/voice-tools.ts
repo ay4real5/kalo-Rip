@@ -1,24 +1,25 @@
 import { prisma } from "@/app/lib/prisma";
 import {
   checkAreaCoverage,
-  createBooking,
-  holdSlot,
   InvalidLessonDateError,
-  OutsideAvailabilityError,
-  releaseHold,
-  searchAvailableSlots,
+  searchSchoolCapacity,
+  securePendingBooking,
   SlotUnavailableError,
 } from "@/app/lib/booking-engine";
-import { sendBookingConfirmation } from "@/app/lib/notifications";
+import {
+  notifyAdminOfPendingBooking,
+  sendSlotSecured,
+} from "@/app/lib/notifications";
 import { formatLessonTime } from "@/app/lib/timezone";
-import type { Customer, Instructor, Booking } from "@prisma/client";
+import type { Customer } from "@prisma/client";
 
 type BookingWithInstructor = {
   id: string;
   startsAt: Date;
   endsAt: Date;
   status: string;
-  instructor: { user: { name: string | null } };
+  /** Null while the lesson is waiting for an admin to allocate a driver. */
+  instructor: { user: { name: string | null } } | null;
 };
 
 type UserWithCustomer = {
@@ -28,10 +29,6 @@ type UserWithCustomer = {
   customer: Customer | null;
 };
 
-type BookingWithRelations = Booking & {
-  customer: Customer & { user: { name: string | null; email: string | null; phone: string | null } };
-  instructor: Instructor & { user: { name: string | null } };
-};
 
 export interface ToolDefinition {
   name: string;
@@ -235,7 +232,9 @@ export const voiceTools: ToolDefinition[] = [
       const postcodeStr = String(postcode);
       const transmissionVal = (transmission as "MANUAL" | "AUTOMATIC" | "BOTH") ?? "BOTH";
 
-      const slots = await searchAvailableSlots({
+      // Capacity across the whole school, not one driver's diary — the caller
+      // is choosing a time, and the office chooses who teaches it.
+      const slots = await searchSchoolCapacity({
         postcode: postcodeStr,
         transmission: transmissionVal,
         preferredDate: preferredDate ? new Date(String(preferredDate)) : undefined,
@@ -275,77 +274,27 @@ export const voiceTools: ToolDefinition[] = [
       // model was speaking them as if they were local time — offering "8am"
       // for a 9am lesson through BST, and inventing the date. Give it the
       // spoken form directly rather than expecting it to convert.
+      // No instructor is named: one has not been chosen, and inventing a name
+      // here would be a promise the office might not keep.
       return {
         slots: slots.map((s) => ({
-          instructorId: s.instructorId,
-          instructorName: s.instructorName,
           when: describeSlot(s.startsAt),
           startsAt: s.startsAt.toISOString(),
           endsAt: s.endsAt.toISOString(),
           pricePence: s.pricePence,
-          vehicleType: s.vehicleType,
         })),
       };
     },
   },
   {
-    name: "hold_slot",
-    description:
-      "Temporarily hold a slot while the caller confirms. Expires after 5 minutes if not booked.",
-    parameters: {
-      type: "object",
-      properties: {
-        instructorId: { type: "string" },
-        startsAt: { type: "string", format: "date-time" },
-        endsAt: { type: "string", format: "date-time" },
-      },
-      required: ["instructorId", "startsAt", "endsAt"],
-    },
-    handler: async ({ instructorId, startsAt, endsAt }, ctx) => {
-      const start = new Date(String(startsAt));
-      const end = new Date(String(endsAt));
-
-      try {
-        const held = await holdSlot(
-          String(instructorId),
-          start,
-          end,
-          hasCallerId(ctx) ? ctx.fromNumber : undefined
-        );
-        // Hand the exact values back. Returning only a hold id left the model
-        // to remember the times itself, and it would sometimes go back and
-        // search again rather than confirm what it had just reserved.
-        return {
-          ...held,
-          instructorId: String(instructorId),
-          startsAt: start.toISOString(),
-          endsAt: end.toISOString(),
-          when: describeSlot(start),
-          nextStep:
-            "Read the slot back, then call confirm_booking with exactly these instructorId, startsAt and endsAt values.",
-        };
-      } catch (error) {
-        if (error instanceof InvalidLessonDateError) {
-          return {
-            error: `${error.message}. Use the exact startsAt value from search_available_lesson_slots.`,
-            nextStep: "search_available_lesson_slots",
-          };
-        }
-        if (error instanceof SlotUnavailableError || error instanceof OutsideAvailabilityError) {
-          return { error: error.message, nextStep: "search_available_lesson_slots" };
-        }
-        throw error;
-      }
-    },
-  },
-  {
     name: "confirm_booking",
     description:
-      "Create a confirmed booking after the caller has selected a held slot. Sends confirmation.",
+      "Secure the chosen time for the caller. Their instructor is allocated afterwards by the office, " +
+      "so never name or promise a specific instructor. Tell the caller the slot is secured and that " +
+      "their instructor will contact them shortly to confirm.",
     parameters: {
       type: "object",
       properties: {
-        instructorId: { type: "string" },
         startsAt: { type: "string", format: "date-time" },
         endsAt: { type: "string", format: "date-time" },
         lessonType: {
@@ -354,38 +303,50 @@ export const voiceTools: ToolDefinition[] = [
         },
         notes: { type: "string" },
       },
-      required: ["instructorId", "startsAt", "endsAt"],
+      required: ["startsAt", "endsAt"],
     },
-    // Books for the identified caller only — there is no customerId argument
-    // to point somewhere else.
-    handler: async ({ instructorId, startsAt, endsAt, lessonType, notes }, ctx) => {
+    // Secures the time only. There is no instructorId argument: which driver
+    // teaches this lesson is the office's decision, made in the admin portal.
+    handler: async ({ startsAt, endsAt, lessonType, notes }, ctx) => {
       if (!ctx.customerId) return NEEDS_IDENTITY;
 
       try {
-        const booking = (await createBooking({
+        const customer = await prisma.customer.findUnique({
+          where: { id: ctx.customerId },
+          include: { user: true },
+        });
+        if (!customer) return NEEDS_IDENTITY;
+
+        const booking = await securePendingBooking({
           customerId: ctx.customerId,
-          instructorId: String(instructorId),
+          postcode: customer.postcode,
+          transmission: customer.transmission,
           startsAt: new Date(String(startsAt)),
           endsAt: new Date(String(endsAt)),
           lessonType:
             (lessonType as "REGULAR" | "INTENSIVE" | "TEST" | "REFRESHER") ?? "REGULAR",
           notes: notes ? String(notes) : undefined,
           source: "PHONE_AI",
-        })) as BookingWithRelations;
-
-        await sendBookingConfirmation({
-          customer: booking.customer,
-          instructor: booking.instructor,
-          booking,
         });
+
+        // Tell the learner their time is held, and the office that there is a
+        // lesson to allocate. Neither may fail the call.
+        await sendSlotSecured({ customer, booking }).catch(() => undefined);
+        await notifyAdminOfPendingBooking({
+          id: booking.id,
+          startsAt: booking.startsAt,
+          customer: { ...customer, user: customer.user },
+        }).catch(() => undefined);
 
         return {
           bookingId: booking.id,
           when: describeSlot(booking.startsAt),
           startsAt: booking.startsAt.toISOString(),
           endsAt: booking.endsAt.toISOString(),
-          instructor: booking.instructor.user.name,
-          confirmed: true,
+          secured: true,
+          awaitingInstructor: true,
+          sayToCaller:
+            "Their slot is secured. An instructor will be assigned and will contact them shortly to confirm. Do not name an instructor.",
         };
       } catch (error) {
         if (error instanceof SlotUnavailableError) {
@@ -457,7 +418,9 @@ export const voiceTools: ToolDefinition[] = [
       const bookings: BookingWithInstructor[] = await prisma.booking.findMany({
         where: {
           customerId: ctx.customerId,
-          status: { in: ["CONFIRMED"] },
+          // Lessons awaiting a driver are still the learner's lessons, and
+          // they will ring up about them, so include them.
+          status: { in: ["PENDING_ASSIGNMENT", "CONFIRMED"] },
           startsAt: { gte: new Date() },
         },
         include: { instructor: { include: { user: true } } },
@@ -468,7 +431,10 @@ export const voiceTools: ToolDefinition[] = [
         when: describeSlot(b.startsAt),
         startsAt: b.startsAt.toISOString(),
         endsAt: b.endsAt.toISOString(),
-        instructorName: b.instructor.user.name,
+        instructorName: b.instructor?.user.name ?? null,
+        // Tell the model plainly, so it says "we're still matching you with an
+        // instructor" rather than inventing a name or claiming it's unbooked.
+        awaitingInstructor: b.instructor === null,
         status: b.status,
       }));
     },
@@ -498,21 +464,6 @@ export const voiceTools: ToolDefinition[] = [
         message:
           "I'm transferring you to a member of the team now. Please hold.",
       };
-    },
-  },
-  {
-    name: "release_slot",
-    description: "Release a temporary slot hold if the caller changes their mind.",
-    parameters: {
-      type: "object",
-      properties: {
-        holdId: { type: "string" },
-      },
-      required: ["holdId"],
-    },
-    handler: async ({ holdId }) => {
-      await releaseHold(String(holdId));
-      return { released: true };
     },
   },
 ];

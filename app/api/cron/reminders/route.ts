@@ -37,6 +37,11 @@ export async function GET(request: Request) {
 
   let sent = 0;
   for (const booking of bookings) {
+    // Only remind about lessons that have a driver. An unassigned one would
+    // read "your lesson with your instructor", which tells the learner nothing
+    // and invites a call the admin has to field.
+    if (!booking.instructor) continue;
+
     try {
       const result = await sendLessonReminder({
         customer: booking.customer,

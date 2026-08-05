@@ -166,6 +166,7 @@ export default function AdminDashboard() {
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "bookings", label: "Bookings" },
+    { id: "assignments", label: "Assign instructors", href: "/admin/assignments" },
     { id: "calendar", label: "Calendar", href: "/admin/calendar" },
     { id: "customers", label: "Customers", href: "/admin/customers" },
     { id: "analytics", label: "Analytics", href: "/admin/analytics" },
@@ -197,11 +198,13 @@ export default function AdminDashboard() {
       trend: "Last 100 calls",
     },
     {
-      label: "AI bookings",
-      value: bookings.filter((b) => b.source === "PHONE_AI").length,
+      // The number that needs acting on, so it belongs on the overview rather
+      // than only inside the queue page.
+      label: "Awaiting instructor",
+      value: bookings.filter((b) => b.status === "PENDING_ASSIGNMENT").length,
       icon: TrendingUp,
       color: "bg-violet-50 text-violet-600",
-      trend: "Booked by voice AI",
+      trend: "Needs assigning",
     },
   ];
 

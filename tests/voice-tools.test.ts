@@ -61,13 +61,15 @@ vi.mock("@/app/lib/prisma", () => ({
 }));
 
 vi.mock("@/app/lib/booking-engine", () => ({
-  createBooking: vi.fn(async () => {
-    throw new Error("createBooking should not be reached in these tests");
-  }),
   cancelBooking: vi.fn(async (id: string) => ({ id, status: "CANCELLED" })),
-  holdSlot: vi.fn(async () => ({ holdId: "hold-1", expiresAt: new Date() })),
-  releaseHold: vi.fn(async () => undefined),
-  searchAvailableSlots: vi.fn(async () => db.slots),
+  searchSchoolCapacity: vi.fn(async () => db.slots),
+  securePendingBooking: vi.fn(async (input: Row) => ({
+    id: "booking-new",
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    status: "PENDING_ASSIGNMENT",
+    instructorId: null,
+  })),
   checkAreaCoverage: vi.fn(async () => db.coverage),
   SlotUnavailableError: class SlotUnavailableError extends Error {},
   OutsideAvailabilityError: class OutsideAvailabilityError extends Error {},
@@ -76,6 +78,8 @@ vi.mock("@/app/lib/booking-engine", () => ({
 
 vi.mock("@/app/lib/notifications", () => ({
   sendBookingConfirmation: vi.fn(async () => ({ sent: true })),
+  sendSlotSecured: vi.fn(async () => ({ sent: true })),
+  notifyAdminOfPendingBooking: vi.fn(async () => ({ sent: true })),
 }));
 
 const { executeTool } = await import("@/app/lib/voice-tools");

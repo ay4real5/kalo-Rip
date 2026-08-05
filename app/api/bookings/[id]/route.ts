@@ -41,7 +41,9 @@ async function loadPermittedBooking(id: string, user: User) {
   // 404 for "not yours" as well as "not there", so ids can't be enumerated.
   if (!booking) return null;
   if (user.role === "ADMIN") return booking;
-  if (booking.instructor.userId === user.id) return booking;
+  // An unassigned lesson belongs to no instructor yet, so no instructor can
+  // reach it — only the learner and an admin.
+  if (booking.instructor?.userId === user.id) return booking;
   if (booking.customer.userId === user.id) return booking;
   return null;
 }
