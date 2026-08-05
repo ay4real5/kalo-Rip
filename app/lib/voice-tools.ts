@@ -1,5 +1,6 @@
 import { prisma } from "@/app/lib/prisma";
 import {
+  checkAreaCoverage,
   createBooking,
   holdSlot,
   InvalidLessonDateError,
@@ -203,7 +204,10 @@ export const voiceTools: ToolDefinition[] = [
     name: "search_available_lesson_slots",
     description:
       "Search for genuine available driving-lesson slots. Never invent availability. Returns up to 20 slots. " +
-      "Read the `when` field aloud verbatim — it is already in UK local time. Never read startsAt/endsAt to the caller.",
+      "Read the `when` field aloud verbatim — it is already in UK local time. Never read startsAt/endsAt to the caller. " +
+      "If the result has reason AREA_NOT_COVERED, tell the caller we don't cover their area, suggest nearby areas we do serve, " +
+      "and offer to take their details or transfer to a human. If the result has reason NO_AVAILABILITY, tell the caller " +
+      "we cover their area but are fully booked, and offer to add them to the waitlist or transfer to a human.",
     parameters: {
       type: "object",
       properties: {
@@ -228,25 +232,60 @@ export const voiceTools: ToolDefinition[] = [
       required: ["postcode", "transmission"],
     },
     handler: async ({ postcode, transmission, preferredDate, lessonType }) => {
+      const postcodeStr = String(postcode);
+      const transmissionVal = (transmission as "MANUAL" | "AUTOMATIC" | "BOTH") ?? "BOTH";
+
       const slots = await searchAvailableSlots({
-        postcode: String(postcode),
-        transmission: (transmission as "MANUAL" | "AUTOMATIC" | "BOTH") ?? "BOTH",
+        postcode: postcodeStr,
+        transmission: transmissionVal,
         preferredDate: preferredDate ? new Date(String(preferredDate)) : undefined,
         lessonType: (lessonType as "REGULAR" | "INTENSIVE" | "TEST" | "REFRESHER") ?? "REGULAR",
       });
+
+      // Distinguish "we don't cover your area" from "fully booked". Without
+      // this, an empty result had no reason and the agent told the caller
+      // there were no slots at all — a dead end that lost the lead. Now the
+      // agent can offer to take their details for the waitlist, suggest the
+      // nearest covered area, or transfer to a human.
+      if (slots.length === 0) {
+        const { covered, servedAreas } = await checkAreaCoverage(postcodeStr);
+        if (!covered) {
+          return {
+            slots: [],
+            reason: "AREA_NOT_COVERED",
+            message:
+              `We don't currently have any instructors covering the ${postcodeStr.split(" ")[0]} area. ` +
+              `We serve: ${servedAreas.join(", ")}. ` +
+              `Offer to take the caller's name and number so we can contact them if we expand to their area, ` +
+              `or ask if any of the served areas would work for them, or transfer to a human.`,
+            servedAreas,
+          };
+        }
+        return {
+          slots: [],
+          reason: "NO_AVAILABILITY",
+          message:
+            "We cover this area but have no available slots in the next two weeks. " +
+            "Offer to add the caller to the waitlist, ask if they can be flexible on day or time, " +
+            "or transfer to a human.",
+        };
+      }
+
       // `when` is what the agent reads out. The ISO instants are UTC, and the
       // model was speaking them as if they were local time — offering "8am"
       // for a 9am lesson through BST, and inventing the date. Give it the
       // spoken form directly rather than expecting it to convert.
-      return slots.map((s) => ({
-        instructorId: s.instructorId,
-        instructorName: s.instructorName,
-        when: describeSlot(s.startsAt),
-        startsAt: s.startsAt.toISOString(),
-        endsAt: s.endsAt.toISOString(),
-        pricePence: s.pricePence,
-        vehicleType: s.vehicleType,
-      }));
+      return {
+        slots: slots.map((s) => ({
+          instructorId: s.instructorId,
+          instructorName: s.instructorName,
+          when: describeSlot(s.startsAt),
+          startsAt: s.startsAt.toISOString(),
+          endsAt: s.endsAt.toISOString(),
+          pricePence: s.pricePence,
+          vehicleType: s.vehicleType,
+        })),
+      };
     },
   },
   {

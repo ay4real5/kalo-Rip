@@ -181,6 +181,34 @@ export async function searchAvailableSlots(
   return slots.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()).slice(0, 20);
 }
 
+/**
+ * Check whether any active instructor covers the given postcode area,
+ * regardless of transmission. Used by the voice agent to distinguish
+ * "we don't cover your area" from "fully booked" — without this, an
+ * empty slot search returns no reason and the agent tells the caller
+ * there are no slots at all, losing the lead.
+ *
+ * Returns the list of outcodes the school currently serves, so the agent
+ * can suggest the nearest covered area.
+ */
+export async function checkAreaCoverage(postcode: string): Promise<{
+  covered: boolean;
+  servedAreas: string[];
+}> {
+  const cleanedPostcode = postcode.replace(/\s+/g, " ").trim().toUpperCase();
+  const outcode = cleanedPostcode.split(" ")[0];
+
+  const instructors = await prisma.instructor.findMany({
+    where: { active: true, acceptsNewLearners: true },
+    select: { servicePostcodes: true },
+  });
+
+  const servedAreas = [...new Set(instructors.flatMap((i) => i.servicePostcodes))].sort();
+  const covered = servedAreas.includes(outcode);
+
+  return { covered, servedAreas };
+}
+
 async function findEligibleInstructors(input: SearchSlotInput) {
   const transmissionFilter: Prisma.InstructorWhereInput[] = [];
   if (!input.transmission || input.transmission === "BOTH") {
