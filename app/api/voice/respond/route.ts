@@ -11,12 +11,6 @@ import {
 } from "@/app/lib/voice-history";
 import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
 
-// Run in London. The database is in eu-west-1 and callers are in the UK, so a
-// function in Vercel's default US region puts an Atlantic crossing on every
-// query — and a slot search makes dozens of them while the caller waits.
-export const preferredRegion = "lhr1";
-export const runtime = "nodejs";
-
 /**
  * The model is not told the date by anything else, so without this it has no
  * idea what "next week" means and invents one. In testing it repeatedly tried
