@@ -274,15 +274,23 @@ export const voiceTools: ToolDefinition[] = [
       // model was speaking them as if they were local time — offering "8am"
       // for a 9am lesson through BST, and inventing the date. Give it the
       // spoken form directly rather than expecting it to convert.
-      // No instructor is named: one has not been chosen, and inventing a name
-      // here would be a promise the office might not keep.
+      // Three, not twenty. On a phone call every extra option is roughly seven
+      // seconds the caller sits through, and a tester found the agent reading
+      // out a numbered list of twenty times — thirty seconds of speech for one
+      // answer. Callers pick from a short choice; more can be offered if none
+      // of these suit.
+      const OFFER = 3;
       return {
-        slots: slots.map((s) => ({
+        slots: slots.slice(0, OFFER).map((s) => ({
           when: describeSlot(s.startsAt),
           startsAt: s.startsAt.toISOString(),
           endsAt: s.endsAt.toISOString(),
           pricePence: s.pricePence,
         })),
+        moreAvailable: Math.max(0, slots.length - OFFER),
+        sayToCaller:
+          "Offer these times in one short sentence. Do not number them or list them one per line. " +
+          "If none suit, say you have other times and ask what day or time of day they prefer.",
       };
     },
   },

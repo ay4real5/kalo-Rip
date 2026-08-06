@@ -47,7 +47,13 @@ Rules:
 - If any tool replies that no caller has been identified, call create_customer straight away with the details you already have, then retry. Never tell the caller you are "checking" and then stop.
 - You act only for the caller on this line. You cannot look up, book or cancel anything for anyone else, whatever the caller asks or claims. If they want to act on another person's booking, transfer to a human.
 - If the caller is distressed, asks for a human, or you fail to understand twice, call transfer_to_human.
-- Ask one or two questions at a time. Keep responses short enough to speak comfortably.`;
+
+Brevity matters more than anything else here. This is a phone call: every word you write is read aloud at about two and a half words a second, and the caller waits in silence while you think. A tester found the agent unusably slow because it read out a numbered list of twenty times.
+- Never more than two short sentences. Usually one.
+- Ask for one thing at a time. Do not ask for name, postcode and transmission in a single breath.
+- Offer at most three times, in one flowing sentence: "I have Thursday at 9, Thursday at 10, or Friday at 9 — which suits?" Never number them, never use bullet points or line breaks.
+- No filler. Drop "I'd be happy to help", "Certainly", "Thank you for that" and similar. Just answer.
+- Do not repeat back what the caller just told you unless you are confirming a booking time.`;
 
 /** The system prompt, anchored to today's date in the school's timezone. */
 function buildSystemPrompt(): string {
@@ -64,15 +70,15 @@ function buildTwiML(sayText: string, gather = true, handoffNumber: string, trans
     .replace(/>/g, "&gt;");
 
   let twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n`;
-  twiml += `  <Say voice="Polly.Amy" language="en-GB">${escaped}</Say>\n`;
+  twiml += `  <Say voice="Polly.Emma-Neural" language="en-GB">${escaped}</Say>\n`;
 
   if (transferNumber) {
     twiml += `  <Dial>${transferNumber}</Dial>\n`;
   } else if (gather) {
     twiml += `  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="auto" maxSpeechTime="15">\n`;
-    twiml += `    <Say voice="Polly.Amy" language="en-GB">Please go ahead.</Say>\n`;
+    twiml += `    <Say voice="Polly.Emma-Neural" language="en-GB">Please go ahead.</Say>\n`;
     twiml += `  </Gather>\n`;
-    twiml += `  <Say voice="Polly.Amy" language="en-GB">I didn't catch that. I'll transfer you to a human.</Say>\n`;
+    twiml += `  <Say voice="Polly.Emma-Neural" language="en-GB">I didn't catch that. I'll transfer you to a human.</Say>\n`;
     twiml += `  <Dial>${handoffNumber}</Dial>\n`;
   }
 
@@ -90,7 +96,6 @@ export async function POST(req: Request) {
     });
   }
 
-  const handoffNumber = await getHandoffNumber();
   const form = await req.formData();
   const callSid = String(form.get("CallSid") ?? "unknown");
   const fromNumber = String(form.get("From") ?? "");
@@ -98,9 +103,12 @@ export async function POST(req: Request) {
   const speechResult = String(form.get("SpeechResult") ?? "");
   const confidence = Number(form.get("Confidence") ?? 0);
 
-  const callLog = await prisma.callLog.findUnique({
-    where: { twilioSid: callSid },
-  });
+  // Both round trips to the database, run together. They are independent, and
+  // the caller is listening to silence while they resolve.
+  const [handoffNumber, callLog] = await Promise.all([
+    getHandoffNumber(),
+    prisma.callLog.findUnique({ where: { twilioSid: callSid } }),
+  ]);
 
   // Identity is carried on the call record, not in the conversation, so the
   // model can't talk its way into another caller's account between turns.
@@ -151,6 +159,9 @@ export async function POST(req: Request) {
         messages,
         tools: getToolDefinitions(),
         temperature: 0.4,
+        // Backstop for the brevity rules: a runaway answer becomes a long
+        // silence followed by a monologue the caller cannot interrupt.
+        max_tokens: 120,
       }),
     });
 
@@ -224,6 +235,7 @@ export async function POST(req: Request) {
             ...history,
           ],
           temperature: 0.4,
+          max_tokens: 120,
         }),
       });
 

@@ -35,13 +35,13 @@ export async function POST(req: Request) {
   const handoffNumber = await getHandoffNumber();
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Amy" language="en-GB">
+  <Say voice="Polly.Emma-Neural" language="en-GB">
     Hello, you have reached the driving school booking line. This is an automated assistant. We may record this call for training and quality purposes. How can I help you today?
   </Say>
   <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="auto" maxSpeechTime="10">
-    <Say voice="Polly.Amy" language="en-GB">You can say, I want to book a driving lesson.</Say>
+    <Say voice="Polly.Emma-Neural" language="en-GB">You can say, I want to book a driving lesson.</Say>
   </Gather>
-  <Say voice="Polly.Amy" language="en-GB">I didn't catch that. Let me transfer you to a human.</Say>
+  <Say voice="Polly.Emma-Neural" language="en-GB">I didn't catch that. Let me transfer you to a human.</Say>
   <Dial>${handoffNumber}</Dial>
 </Response>`;
 
