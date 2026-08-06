@@ -3,6 +3,12 @@ import { getHandoffNumber } from "@/app/lib/settings";
 import { verifyTwilioSignature } from "@/app/lib/twilio-verify";
 import { NextResponse } from "next/server";
 
+// Run in London. The database is in eu-west-1 and callers are in the UK, so a
+// function in Vercel's default US region puts an Atlantic crossing on every
+// query — and a slot search makes dozens of them while the caller waits.
+export const preferredRegion = "lhr1";
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   // Verify the request is genuinely from Twilio
   const valid = await verifyTwilioSignature(req, process.env.TWILIO_AUTH_TOKEN);

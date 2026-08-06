@@ -104,38 +104,46 @@ export async function searchAvailableSlots(
   const instructors = await findEligibleInstructors(input);
   const slots: AvailableSlot[] = [];
 
-  for (const instructor of instructors) {
-    if (!instructor.active || !instructor.acceptsNewLearners) continue;
-    if (
-      input.lessonType === "INTENSIVE" &&
-      !instructor.offersIntensive
-    ) {
-      continue;
-    }
+  const bookable = instructors.filter(
+    (i) =>
+      i.active &&
+      i.acceptsNewLearners &&
+      !(input.lessonType === "INTENSIVE" && !i.offersIntensive)
+  );
 
-    const availability = await getInstructorAvailability(instructor.id, startDate, endDate);
+  // Gather every instructor's diary concurrently. Done one at a time this was
+  // roughly five round trips each, in series — with a handful of instructors
+  // that is dozens of sequential queries, and on a phone call the caller hears
+  // all of it as silence.
+  const diaries = await Promise.all(
+    bookable.map(async (instructor) => {
+      const [availability, existingBookings, holds] = await Promise.all([
+        getInstructorAvailability(instructor.id, startDate, endDate),
+        // Match anything *overlapping* the window. Filtering on startsAt alone
+        // missed a lesson that began before the window and ran into it, so the
+        // opening slot of the range could be offered while already booked.
+        prisma.booking.findMany({
+          where: {
+            instructorId: instructor.id,
+            status: { in: ["CONFIRMED"] },
+            startsAt: { lt: endDate },
+            endsAt: { gt: startDate },
+          },
+        }) as Promise<BookingRecord[]>,
+        prisma.slotHold.findMany({
+          where: {
+            instructorId: instructor.id,
+            expiresAt: { gt: new Date() },
+            startsAt: { lt: endDate },
+            endsAt: { gt: startDate },
+          },
+        }) as Promise<HoldRecord[]>,
+      ]);
+      return { instructor, availability, existingBookings, holds };
+    })
+  );
 
-    // Match anything *overlapping* the window. Filtering on startsAt alone
-    // missed a lesson that began before the window and ran into it, so the
-    // opening slot of the range could be offered while already booked.
-    const existingBookings: BookingRecord[] = await prisma.booking.findMany({
-      where: {
-        instructorId: instructor.id,
-        status: { in: ["CONFIRMED"] },
-        startsAt: { lt: endDate },
-        endsAt: { gt: startDate },
-      },
-    });
-
-    const holds: HoldRecord[] = await prisma.slotHold.findMany({
-      where: {
-        instructorId: instructor.id,
-        expiresAt: { gt: new Date() },
-        startsAt: { lt: endDate },
-        endsAt: { gt: startDate },
-      },
-    });
-
+  for (const { instructor, availability, existingBookings, holds } of diaries) {
     const bufferMinutes = instructor.travelBufferMinutes ?? 0;
     const dailyCount = countByLocalDate(existingBookings);
     const maxPerDay = instructor.maxLessonsPerDay ?? Infinity;
@@ -329,35 +337,28 @@ async function getInstructorAvailability(
   endDate: Date
 ) {
   const result: { startsAt: Date; endsAt: Date }[] = [];
-  const weekly = await prisma.availability.findMany({
-    where: { instructorId },
-    orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-  });
-
+  // Three independent lookups; no reason to wait for each in turn.
+  //
   // Date-only columns are stored at midnight UTC while the window boundaries
   // are local midnight, so pad a day either side rather than lose an edge day
   // to the offset between them. Matching is done on calendar date below.
-  const rangeStart = addMinutes(startDate, -24 * 60);
-  const rangeEnd = addMinutes(endDate, 24 * 60);
+  const rangeStartPad = addMinutes(startDate, -24 * 60);
+  const rangeEndPad = addMinutes(endDate, 24 * 60);
 
-  const blackouts: { date: Date }[] = await prisma.blackoutDate.findMany({
-    where: {
-      instructorId,
-      date: { gte: rangeStart, lte: rangeEnd },
-    },
-  });
-
-  const overrides: {
-    date: Date;
-    startTime: string | null;
-    endTime: string | null;
-    isAvailable: boolean;
-  }[] = await prisma.scheduleOverride.findMany({
-    where: {
-      instructorId,
-      date: { gte: rangeStart, lte: rangeEnd },
-    },
-  });
+  const [weekly, blackouts, overrides] = await Promise.all([
+    prisma.availability.findMany({
+      where: { instructorId },
+      orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.blackoutDate.findMany({
+      where: { instructorId, date: { gte: rangeStartPad, lte: rangeEndPad } },
+    }) as Promise<{ date: Date }[]>,
+    prisma.scheduleOverride.findMany({
+      where: { instructorId, date: { gte: rangeStartPad, lte: rangeEndPad } },
+    }) as Promise<
+      { date: Date; startTime: string | null; endTime: string | null; isAvailable: boolean }[]
+    >,
+  ]);
 
   // Blackouts and overrides are date-only columns standing for a whole local
   // day, so they are keyed by calendar date rather than compared as instants.
