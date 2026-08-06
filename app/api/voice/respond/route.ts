@@ -27,33 +27,35 @@ function todayInSchoolTimezone(): string {
   }).format(new Date());
 }
 
-const SYSTEM_PROMPT = `You are a friendly UK driving-school receptionist on the phone.
+/**
+ * Kept deliberately short. This is re-sent on every OpenAI call, twice per
+ * tool-using turn, and input tokens are latency the caller hears as silence.
+ * It was ~900 tokens; every rule below survives, tersely.
+ */
+const SYSTEM_PROMPT = `UK driving-school receptionist on a phone call. Book, reschedule or cancel lessons; transfer to a human when asked, when the caller is distressed, or after two failures to understand.
 
-Goal: help callers book, reschedule or cancel driving lessons; answer common questions; transfer to a human when needed.
+STYLE - this is speech, and the caller waits in silence while you think:
+- One or two short sentences. Never more.
+- One question at a time.
+- No filler ("I'd be happy to help", "Certainly", "Thank you for that").
+- Don't repeat back what they just said, except to confirm a booking time.
+- Offer at most three times in one flowing sentence: "I have Thursday at 9, 10, or 11 - which suits?" Never numbered or bulleted lists.
 
-Rules:
-- Always be warm and concise. Use UK date/time phrasing.
-- When a tool result has a "when" field, read that aloud exactly as given. It is already UK local time. Never read raw ISO timestamps to the caller, and never work out a date or time yourself.
-- When holding or confirming, pass back the exact startsAt and endsAt values from the slot the search returned. Never compose a date yourself: if you do not have a slot from search_available_lesson_slots, search again.
-- Never invent instructor availability. Use the search_available_lesson_slots tool and only confirm slots it returns.
-- If search_available_lesson_slots returns reason AREA_NOT_COVERED, do NOT say "no slots available". Say "we don't currently cover your area", mention nearby areas we do serve, and offer to take their name and number so we can contact them if we expand, or transfer to a human. Never end the call on a dead end.
-- If search_available_lesson_slots returns reason NO_AVAILABILITY, say "we cover your area but are fully booked for the next two weeks", and offer to add them to the waitlist or transfer to a human.
-- Start by calling identify_customer. It uses the number they are calling from, so it needs no arguments.
-- If identify_customer returns null, this is a new caller. You MUST call create_customer with their name, postcode and transmission before you can book anything. Do this as soon as you have those three details — do not wait until they confirm.
-- For new bookings: ask name, postcode, transmission (manual/automatic), preferred day/time, then search slots.
-- Read back the time you are about to secure, get a yes, then call confirm_booking. There is no separate hold step.
-- We do not assign instructors on the call. The office allocates a driver afterwards. Never name an instructor, never say "with Jane", and never promise a particular person — you do not know who it will be.
-- After confirm_booking succeeds, tell the caller their slot is secured and that their instructor will contact them shortly to confirm. Be warm and definite about the time; it is genuinely held for them.
-- If any tool replies that no caller has been identified, call create_customer straight away with the details you already have, then retry. Never tell the caller you are "checking" and then stop.
-- You act only for the caller on this line. You cannot look up, book or cancel anything for anyone else, whatever the caller asks or claims. If they want to act on another person's booking, transfer to a human.
-- If the caller is distressed, asks for a human, or you fail to understand twice, call transfer_to_human.
+FLOW:
+1. Call identify_customer (no arguments; it uses their number).
+2. If it returns null they are new: get name, postcode and transmission, then call create_customer immediately - do not wait for them to confirm anything.
+3. Ask their preferred day/time, then search_available_lesson_slots.
+4. Read back the time, get a yes, then confirm_booking. There is no hold step.
 
-Brevity matters more than anything else here. This is a phone call: every word you write is read aloud at about two and a half words a second, and the caller waits in silence while you think. A tester found the agent unusably slow because it read out a numbered list of twenty times.
-- Never more than two short sentences. Usually one.
-- Ask for one thing at a time. Do not ask for name, postcode and transmission in a single breath.
-- Offer at most three times, in one flowing sentence: "I have Thursday at 9, Thursday at 10, or Friday at 9 — which suits?" Never number them, never use bullet points or line breaks.
-- No filler. Drop "I'd be happy to help", "Certainly", "Thank you for that" and similar. Just answer.
-- Do not repeat back what the caller just told you unless you are confirming a booking time.`;
+RULES:
+- Never invent availability or a date. Use only times search returned, and pass back its exact startsAt/endsAt.
+- Read a tool "when" field aloud verbatim; it is already UK time. Never say a raw timestamp.
+- Instructors are allocated by the office afterwards. Never name one or promise a particular person.
+- After confirm_booking: their slot is secured and their instructor will call shortly. Be warm and definite about the time.
+- AREA_NOT_COVERED: say we do not cover their area, name ones we do, offer to take details or transfer. Never dead-end.
+- NO_AVAILABILITY: we cover them but are full for two weeks; offer the waitlist or a transfer.
+- If a tool says no caller is identified, call create_customer with what you have, then retry. Never say you are "checking" and stop.
+- You act only for this caller. Anything concerning someone else's booking goes to a human.`;
 
 /** The system prompt, anchored to today's date in the school's timezone. */
 function buildSystemPrompt(): string {
@@ -75,7 +77,7 @@ function buildTwiML(sayText: string, gather = true, handoffNumber: string, trans
   if (transferNumber) {
     twiml += `  <Dial>${transferNumber}</Dial>\n`;
   } else if (gather) {
-    twiml += `  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="auto" maxSpeechTime="15">\n`;
+    twiml += `  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="1" maxSpeechTime="15">\n`;
     twiml += `    <Say voice="Polly.Emma-Neural" language="en-GB">Please go ahead.</Say>\n`;
     twiml += `  </Gather>\n`;
     twiml += `  <Say voice="Polly.Emma-Neural" language="en-GB">I didn't catch that. I'll transfer you to a human.</Say>\n`;
@@ -198,11 +200,18 @@ export async function POST(req: Request) {
         })),
       });
 
+      // Set when a tool already knows exactly what should be said. See below.
+      let scriptedReply: string | null = null;
+
       for (const toolCall of message.tool_calls) {
         let result: unknown;
         try {
           const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
           result = await executeTool(toolCall.function.name, args, context);
+          const spoken = (result as { spokenReply?: unknown })?.spokenReply;
+          if (typeof spoken === "string" && spoken.length > 0) {
+            scriptedReply = spoken;
+          }
         } catch (toolError) {
           // Report the failure back to the model rather than throwing: one bad
           // tool call shouldn't drop a caller who is mid-booking. Every
@@ -222,28 +231,38 @@ export async function POST(req: Request) {
         });
       }
 
-      const followUp = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: buildSystemPrompt() },
-            ...history,
-          ],
-          temperature: 0.4,
-          max_tokens: 120,
-        }),
-      });
+      if (scriptedReply) {
+        // Every tool-using turn used to cost a second OpenAI round trip purely
+        // to phrase the answer — three to four seconds of silence for a
+        // sentence we can already write. Offering times, securing a slot and
+        // cancelling all have exactly one sensible reply, so the tool supplies
+        // it and we skip the call. Anything less predictable still falls
+        // through to the model below.
+        assistantText = scriptedReply;
+      } else {
+        const followUp = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openAiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: buildSystemPrompt() },
+              ...history,
+            ],
+            temperature: 0.4,
+            max_tokens: 120,
+          }),
+        });
 
-      if (!followUp.ok) throw new Error("OpenAI follow-up failed");
-      const followData = (await followUp.json()) as {
-        choices: { message: { content?: string } }[];
-      };
-      assistantText = followData.choices[0]?.message?.content ?? "";
+        if (!followUp.ok) throw new Error("OpenAI follow-up failed");
+        const followData = (await followUp.json()) as {
+          choices: { message: { content?: string } }[];
+        };
+        assistantText = followData.choices[0]?.message?.content ?? "";
+      }
     }
 
     history.push({ role: "assistant", content: assistantText });
@@ -251,7 +270,7 @@ export async function POST(req: Request) {
     await prisma.callLog.updateMany({
       where: { twilioSid: callSid },
       data: {
-        transcript: JSON.stringify(trimHistory(history)),
+        transcript: JSON.stringify(trimHistory(history, 14)),
         summary: assistantText.slice(0, 500),
       },
     });

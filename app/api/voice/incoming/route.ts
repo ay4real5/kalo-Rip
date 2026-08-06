@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   <Say voice="Polly.Emma-Neural" language="en-GB">
     Hello, you have reached the driving school booking line. This is an automated assistant. We may record this call for training and quality purposes. How can I help you today?
   </Say>
-  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="auto" maxSpeechTime="10">
+  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="1" maxSpeechTime="10">
     <Say voice="Polly.Emma-Neural" language="en-GB">You can say, I want to book a driving lesson.</Say>
   </Gather>
   <Say voice="Polly.Emma-Neural" language="en-GB">I didn't catch that. Let me transfer you to a human.</Say>

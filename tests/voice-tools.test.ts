@@ -411,6 +411,70 @@ describe("search_available_lesson_slots — empty results carry a reason", () =>
   });
 });
 
+/**
+ * Tool results carry the sentence to speak, which lets the route skip a second
+ * OpenAI round trip — three to four seconds of silence on a phone call. These
+ * pin the wording, because it now reaches the caller unedited.
+ */
+describe("spoken replies", () => {
+  it("offers times in one sentence, grouped by day", async () => {
+    db.slots = [
+      { startsAt: new Date("2026-08-13T08:00:00.000Z"), endsAt: new Date("2026-08-13T09:00:00.000Z"), pricePence: 3800, freeInstructors: 1 },
+      { startsAt: new Date("2026-08-13T09:00:00.000Z"), endsAt: new Date("2026-08-13T10:00:00.000Z"), pricePence: 3800, freeInstructors: 1 },
+      { startsAt: new Date("2026-08-13T10:00:00.000Z"), endsAt: new Date("2026-08-13T11:00:00.000Z"), pricePence: 3800, freeInstructors: 1 },
+    ];
+
+    const result = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+
+    const spoken = String(result.spokenReply);
+    // The date is said once, then the times — not repeated three times.
+    expect(spoken).toBe(
+      "I have Thursday 13 August at 9:00 am, 10:00 am or 11:00 am. Which suits you?"
+    );
+    expect(spoken).not.toMatch(/\d\./); // no numbered list
+    expect(spoken.split(/\s+/).length).toBeLessThan(25); // ~10s of speech
+  });
+
+  it("offers at most three even when more are free", async () => {
+    db.slots = Array.from({ length: 12 }, (_, i) => ({
+      startsAt: new Date(`2026-08-13T${String(8 + i).padStart(2, "0")}:00:00.000Z`),
+      endsAt: new Date(`2026-08-13T${String(9 + i).padStart(2, "0")}:00:00.000Z`),
+      pricePence: 3800,
+      freeInstructors: 1,
+    }));
+
+    const result = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "CR0 1AA", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+
+    expect((result.slots as Row[]).length).toBe(3);
+    expect(result.moreAvailable).toBe(9);
+  });
+
+  it("tells an uncovered caller what we do serve", async () => {
+    db.slots = [];
+    db.coverage = { covered: false, servedAreas: ["CR0", "CR7", "SE25", "SE26"] };
+
+    const result = (await executeTool(
+      "search_available_lesson_slots",
+      { postcode: "BR6 5XF", transmission: "AUTOMATIC" },
+      ctx()
+    )) as Row;
+
+    const spoken = String(result.spokenReply);
+    expect(spoken).toContain("BR6");
+    expect(spoken).toContain("CR0");
+    // Only a few areas, not all 23 — nobody listens to a postcode recital.
+    expect(spoken).not.toContain("SE26");
+  });
+});
+
 describe("tool definitions", () => {
   it("expose no customerId or phone argument for the model to set", async () => {
     const { getToolDefinitions } = await import("@/app/lib/voice-tools");

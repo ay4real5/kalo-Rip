@@ -10,7 +10,11 @@ import {
   notifyAdminOfPendingBooking,
   sendSlotSecured,
 } from "@/app/lib/notifications";
-import { formatLessonTime } from "@/app/lib/timezone";
+import {
+  formatLessonClock,
+  formatLessonDate,
+  formatLessonTime,
+} from "@/app/lib/timezone";
 import type { Customer } from "@prisma/client";
 
 type BookingWithInstructor = {
@@ -87,6 +91,34 @@ const NEEDS_IDENTITY = {
  * at the date.
  */
 const describeSlot = formatLessonTime;
+
+/**
+ * The sentence offering a few times, grouped by day.
+ *
+ * "Thursday 13 August at 9:00 am, 10:00 am or 11:00 am" rather than repeating
+ * the date three times, which is what reading three full descriptions aloud
+ * would do.
+ */
+function describeSlotChoice(starts: Date[]): string {
+  const byDay = new Map<string, string[]>();
+  for (const start of starts) {
+    // No year and no comma: "Thursday 13 August". Nobody books a lesson in a
+    // different year, and every needless word is time on the call.
+    const day = formatLessonDate(start).replace(/,/g, "").replace(/\s+\d{4}$/, "");
+    const times = byDay.get(day) ?? [];
+    times.push(formatLessonClock(start));
+    byDay.set(day, times);
+  }
+
+  const join = (parts: string[]) =>
+    parts.length <= 1
+      ? (parts[0] ?? "")
+      : `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
+
+  return join(
+    [...byDay.entries()].map(([day, times]) => `${day} at ${join(times)}`)
+  );
+}
 
 /**
  * Match a customer by calling number.
@@ -258,6 +290,10 @@ export const voiceTools: ToolDefinition[] = [
               `Offer to take the caller's name and number so we can contact them if we expand to their area, ` +
               `or ask if any of the served areas would work for them, or transfer to a human.`,
             servedAreas,
+            spokenReply:
+              `I'm sorry, we don't cover ${postcodeStr.split(" ")[0]} at the moment. ` +
+              `We do cover ${servedAreas.slice(0, 3).join(", ")}. ` +
+              `Would any of those work, or shall I take your details in case we expand?`,
           };
         }
         return {
@@ -267,6 +303,9 @@ export const voiceTools: ToolDefinition[] = [
             "We cover this area but have no available slots in the next two weeks. " +
             "Offer to add the caller to the waitlist, ask if they can be flexible on day or time, " +
             "or transfer to a human.",
+          spokenReply:
+            "We cover your area, but we're fully booked for the next two weeks. " +
+            "Shall I add you to the waitlist and call you when something frees up?",
         };
       }
 
@@ -280,17 +319,18 @@ export const voiceTools: ToolDefinition[] = [
       // answer. Callers pick from a short choice; more can be offered if none
       // of these suit.
       const OFFER = 3;
+      const offered = slots.slice(0, OFFER);
       return {
-        slots: slots.slice(0, OFFER).map((s) => ({
+        slots: offered.map((s) => ({
           when: describeSlot(s.startsAt),
           startsAt: s.startsAt.toISOString(),
           endsAt: s.endsAt.toISOString(),
           pricePence: s.pricePence,
         })),
         moreAvailable: Math.max(0, slots.length - OFFER),
-        sayToCaller:
-          "Offer these times in one short sentence. Do not number them or list them one per line. " +
-          "If none suit, say you have other times and ask what day or time of day they prefer.",
+        spokenReply: `I have ${describeSlotChoice(
+          offered.map((s) => s.startsAt)
+        )}. Which suits you?`,
       };
     },
   },
@@ -353,6 +393,9 @@ export const voiceTools: ToolDefinition[] = [
           endsAt: booking.endsAt.toISOString(),
           secured: true,
           awaitingInstructor: true,
+          spokenReply:
+            `Your lesson on ${describeSlot(booking.startsAt)} is secured. ` +
+            `Your instructor will call you shortly to confirm.`,
           sayToCaller:
             "Their slot is secured. An instructor will be assigned and will contact them shortly to confirm. Do not name an instructor.",
         };
@@ -410,7 +453,11 @@ export const voiceTools: ToolDefinition[] = [
         booking.id,
         reason ? String(reason) : undefined
       );
-      return { bookingId: cancelled.id, status: cancelled.status };
+      return {
+        bookingId: cancelled.id,
+        status: cancelled.status,
+        spokenReply: "That's cancelled for you. Anything else I can help with?",
+      };
     },
   },
   {
