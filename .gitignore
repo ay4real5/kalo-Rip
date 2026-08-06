@@ -50,3 +50,6 @@ next-env.d.ts
 skills-lock.json
 
 .vercel
+
+# Local probes and scratch scripts
+scripts-tmp-*.ts
