@@ -1,5 +1,4 @@
 import { prisma } from "@/app/lib/prisma";
-import { getHandoffNumber } from "@/app/lib/settings";
 import { verifyTwilioSignature } from "@/app/lib/twilio-verify";
 import { NextResponse } from "next/server";
 
@@ -32,17 +31,16 @@ export async function POST(req: Request) {
     .catch(() => undefined);
 
   const actionUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/voice/respond`;
-  const handoffNumber = await getHandoffNumber();
+  // No <Dial> fallback here. Silence used to fall straight through to a
+  // transfer, so a caller who paused before speaking was handed to a human
+  // before saying a word. actionOnEmptyResult sends silence back to /respond,
+  // which re-prompts twice before giving up.
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Emma-Neural" language="en-GB">
-    Hello, you have reached the driving school booking line. This is an automated assistant. We may record this call for training and quality purposes. How can I help you today?
+    Hello, you've reached the driving school booking line. How can I help?
   </Say>
-  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="1" maxSpeechTime="10">
-    <Say voice="Polly.Emma-Neural" language="en-GB">You can say, I want to book a driving lesson.</Say>
-  </Gather>
-  <Say voice="Polly.Emma-Neural" language="en-GB">I didn't catch that. Let me transfer you to a human.</Say>
-  <Dial>${handoffNumber}</Dial>
+  <Gather input="speech" action="${actionUrl}?silent=0" method="POST" language="en-GB" speechTimeout="1" timeout="7" maxSpeechTime="15" actionOnEmptyResult="true"/>
 </Response>`;
 
   return new NextResponse(twiml, {

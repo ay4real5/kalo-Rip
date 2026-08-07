@@ -32,7 +32,9 @@ function todayInSchoolTimezone(): string {
  * tool-using turn, and input tokens are latency the caller hears as silence.
  * It was ~900 tokens; every rule below survives, tersely.
  */
-const SYSTEM_PROMPT = `UK driving-school receptionist on a phone call. Book, reschedule or cancel lessons; transfer to a human when asked, when the caller is distressed, or after two failures to understand.
+const SYSTEM_PROMPT = `UK driving-school receptionist on a phone call. Book, reschedule or cancel lessons.
+
+TRANSFERS ARE A LAST RESORT. Only call transfer_to_human if the caller explicitly asks for a person, is upset, or wants something you genuinely cannot do (complaints, refunds, another person's booking). Never transfer because speech was unclear, because they paused, or because you are unsure — ask them again instead. Phone transcription is imperfect; a misheard word is normal and is not a reason to hand the call over.
 
 STYLE - this is speech, and the caller waits in silence while you think:
 - One or two short sentences. Never more.
@@ -64,24 +66,53 @@ function buildSystemPrompt(): string {
 Today is ${todayInSchoolTimezone()}. Work out "tomorrow", "next week" and similar from that date only. Never guess a date, and never use a date that did not come from search_available_lesson_slots.`;
 }
 
-function buildTwiML(sayText: string, gather = true, handoffNumber: string, transferNumber?: string) {
-  const actionUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/voice/respond`;
-  const escaped = sayText
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+const VOICE = 'voice="Polly.Emma-Neural" language="en-GB"';
+
+const escapeXml = (text: string) =>
+  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * Would dialling this number put the call back into itself?
+ *
+ * Two ways that happens, and both were live: transferring to the number that
+ * is currently calling — a tester set the handoff number to the mobile they
+ * were ringing from, so the transfer dialled the phone already on the call —
+ * and transferring to our own Twilio number, which loops straight back into
+ * the agent.
+ */
+function isLoopingTransfer(target: string, fromNumber: string, toNumber: string) {
+  const digits = (s: string) => s.replace(/\D/g, "").slice(-10);
+  const dest = digits(target);
+  return dest.length > 0 && (dest === digits(fromNumber) || dest === digits(toNumber));
+}
+
+interface TwiMLOptions {
+  say: string;
+  /** Keep listening. Omit only when the call is ending or transferring. */
+  gather?: boolean;
+  /** Number to transfer to, already checked for loops. */
+  transferTo?: string;
+  /** Consecutive turns where the caller said nothing. */
+  silentTurns?: number;
+}
+
+function buildTwiML({ say, gather = true, transferTo, silentTurns = 0 }: TwiMLOptions) {
+  const base = `${process.env.NEXT_PUBLIC_APP_URL}/api/voice/respond`;
 
   let twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n`;
-  twiml += `  <Say voice="Polly.Emma-Neural" language="en-GB">${escaped}</Say>\n`;
+  twiml += `  <Say ${VOICE}>${escapeXml(say)}</Say>\n`;
 
-  if (transferNumber) {
-    twiml += `  <Dial>${transferNumber}</Dial>\n`;
+  if (transferTo) {
+    // callerId so the office sees the school's number rather than a stranger's,
+    // and the transfer is not mistaken for the learner ringing them directly.
+    twiml += `  <Dial callerId="${escapeXml(process.env.TWILIO_PHONE_NUMBER ?? "")}">${escapeXml(transferTo)}</Dial>\n`;
   } else if (gather) {
-    twiml += `  <Gather input="speech" action="${actionUrl}" language="en-GB" speechTimeout="1" maxSpeechTime="15">\n`;
-    twiml += `    <Say voice="Polly.Emma-Neural" language="en-GB">Please go ahead.</Say>\n`;
-    twiml += `  </Gather>\n`;
-    twiml += `  <Say voice="Polly.Emma-Neural" language="en-GB">I didn't catch that. I'll transfer you to a human.</Say>\n`;
-    twiml += `  <Dial>${handoffNumber}</Dial>\n`;
+    // actionOnEmptyResult brings silence back here instead of falling through
+    // to whatever verb comes next. Previously a caller who paused to think hit
+    // a <Dial> and was transferred mid-thought. Now silence is just another
+    // turn, and we decide what to do about it.
+    const action = `${base}?silent=${silentTurns}`;
+    twiml += `  <Gather input="speech" action="${escapeXml(action)}" method="POST" language="en-GB" speechTimeout="1" timeout="7" maxSpeechTime="15" actionOnEmptyResult="true"/>\n`;
   }
 
   twiml += `</Response>`;
@@ -112,6 +143,49 @@ export async function POST(req: Request) {
     prisma.callLog.findUnique({ where: { twilioSid: callSid } }),
   ]);
 
+  /** Where a transfer would go, or null if that would loop back into the call. */
+  const safeHandoff = isLoopingTransfer(handoffNumber, fromNumber, toNumber)
+    ? null
+    : handoffNumber;
+
+  if (!safeHandoff) {
+    console.error(
+      `[voice] handoff number ${handoffNumber} would dial the caller or our own line; transfers disabled for this call`
+    );
+  }
+
+  // Silence is a turn like any other. The caller may simply be thinking, and
+  // being transferred mid-thought is worse than being asked again.
+  const silentTurns = Number(new URL(req.url).searchParams.get("silent") ?? 0);
+  if (!speechResult) {
+    const nextSilent = silentTurns + 1;
+
+    if (nextSilent < 3) {
+      // No model call: we know exactly what to say, and a caller waiting in
+      // silence should not then wait on OpenAI to be asked "are you there?".
+      return new NextResponse(
+        buildTwiML({
+          say:
+            nextSilent === 1
+              ? "Sorry, I didn't catch that. Could you say that again?"
+              : "Are you still there?",
+          silentTurns: nextSilent,
+        }),
+        { headers: { "Content-Type": "text/xml" } }
+      );
+    }
+
+    // Three turns of nothing. Now a transfer is warranted.
+    return new NextResponse(
+      buildTwiML(
+        safeHandoff
+          ? { say: "I'll put you through to someone who can help.", transferTo: safeHandoff }
+          : { say: "Sorry, I can't hear you. Please call us back. Goodbye.", gather: false }
+      ),
+      { headers: { "Content-Type": "text/xml" } }
+    );
+  }
+
   // Identity is carried on the call record, not in the conversation, so the
   // model can't talk its way into another caller's account between turns.
   const context: CallContext = {
@@ -139,9 +213,14 @@ export async function POST(req: Request) {
 
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey) {
-    return new NextResponse(buildTwiML("I'm sorry, our booking assistant is unavailable right now. Transferring you.", false, handoffNumber, handoffNumber), {
-      headers: { "Content-Type": "text/xml" },
-    });
+    return new NextResponse(
+      buildTwiML(
+        safeHandoff
+          ? { say: "Sorry, our booking assistant is unavailable. Putting you through.", transferTo: safeHandoff }
+          : { say: "Sorry, our booking line is unavailable right now. Please call back shortly.", gather: false }
+      ),
+      { headers: { "Content-Type": "text/xml" } }
+    );
   }
 
   try {
@@ -281,11 +360,12 @@ export async function POST(req: Request) {
       (t) => t.function.name === "transfer_to_human"
     );
 
+    // A transfer with nowhere safe to go would dial the caller back into their
+    // own call, so keep talking to them instead.
     const twiml = buildTwiML(
-      assistantText,
-      !isTransfer,
-      handoffNumber,
-      isTransfer ? handoffNumber : undefined
+      isTransfer && safeHandoff
+        ? { say: assistantText, transferTo: safeHandoff }
+        : { say: assistantText }
     );
 
     return new NextResponse(twiml, {
@@ -295,10 +375,9 @@ export async function POST(req: Request) {
     console.error("Voice respond error:", err);
     return new NextResponse(
       buildTwiML(
-        "I'm having trouble understanding. Let me transfer you to a human.",
-        false,
-        handoffNumber,
-        handoffNumber
+        safeHandoff
+          ? { say: "Let me put you through to someone who can help.", transferTo: safeHandoff }
+          : { say: "Sorry, I'm having trouble. Please call us back shortly.", gather: false }
       ),
       { headers: { "Content-Type": "text/xml" } }
     );
