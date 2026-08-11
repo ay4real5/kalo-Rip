@@ -11,11 +11,35 @@ function required(name: string): string {
   return value;
 }
 
+/**
+ * Where the tool endpoint lives, e.g. https://kalo-rip.vercel.app
+ *
+ * Accepts NEXT_PUBLIC_APP_URL too, since that is the name the rest of the
+ * project uses and it is the one people reach for when copying variables
+ * across.
+ */
+function appUrl(): string {
+  const value = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+  if (!value) {
+    throw new Error("Missing required environment variable: APP_URL");
+  }
+
+  // The local .env points at localhost, so that value gets copied by mistake.
+  // From Railway there is no localhost to reach, and the failure would show up
+  // as tool calls silently failing mid-call rather than anything obvious.
+  if (/localhost|127\.0\.0\.1/.test(value) && process.env.NODE_ENV === "production") {
+    throw new Error(
+      `APP_URL is "${value}", which this service cannot reach. Set it to the deployed app, e.g. https://kalo-rip.vercel.app`
+    );
+  }
+
+  return value.replace(/\/$/, "");
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 8080),
   openAiKey: required("OPENAI_API_KEY"),
-  /** Where the tool endpoint lives, e.g. https://kalo-rip.vercel.app */
-  appUrl: required("APP_URL").replace(/\/$/, ""),
+  appUrl: appUrl(),
   /** Shared with the app's /api/voice/tool endpoint. */
   bridgeSecret: required("VOICE_BRIDGE_SECRET"),
   model: process.env.REALTIME_MODEL ?? "gpt-realtime-2.1",
