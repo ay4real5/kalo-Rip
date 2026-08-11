@@ -18,6 +18,8 @@ export interface RealtimeTool {
 export interface SessionConfig {
   instructions: string;
   tools: RealtimeTool[];
+  /** Spoken on answer. Comes from the app so the school's name lives in one place. */
+  greeting?: string;
 }
 
 const headers = {

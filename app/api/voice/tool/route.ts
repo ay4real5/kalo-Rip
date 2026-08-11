@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { prisma } from "@/app/lib/prisma";
 import { executeTool, getToolDefinitions, type CallContext } from "@/app/lib/voice-tools";
 import { buildSystemPrompt } from "@/app/lib/voice-prompt";
+import { getSetting } from "@/app/lib/settings";
 import { z } from "zod";
 
 /**
@@ -113,8 +114,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const schoolName = await getSetting("school_name").catch(() => null);
+
   return NextResponse.json({
-    instructions: buildSystemPrompt(),
+    // Spoken the instant the call connects, so it carries the school's name
+    // rather than the bridge holding its own copy.
+    greeting: `Hello, you've reached ${schoolName ?? "the driving school booking line"}. How can I help?`,
+    instructions: await buildSystemPrompt(),
     // Realtime takes a flat tool shape rather than Chat Completions' nesting.
     tools: getToolDefinitions().map((t) => ({
       type: "function" as const,

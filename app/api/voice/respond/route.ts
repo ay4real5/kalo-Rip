@@ -170,7 +170,7 @@ export async function POST(req: Request) {
 
   try {
     const messages = [
-      { role: "system", content: buildSystemPrompt() },
+      { role: "system", content: await buildSystemPrompt() },
       ...history,
     ];
 
@@ -273,7 +273,7 @@ export async function POST(req: Request) {
           body: JSON.stringify({
             model: "gpt-4o-mini",
             messages: [
-              { role: "system", content: buildSystemPrompt() },
+              { role: "system", content: await buildSystemPrompt() },
               ...history,
             ],
             temperature: 0.4,

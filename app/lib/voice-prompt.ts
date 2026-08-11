@@ -1,4 +1,5 @@
 import { SCHOOL_TIMEZONE } from "@/app/lib/timezone";
+import { describeSchool, getSchoolFacts } from "@/app/lib/school-info";
 
 /**
  * What the phone agent is told, shared by both voice implementations.
@@ -49,15 +50,30 @@ export function todayInSchoolTimezone(): string {
 }
 
 /**
- * The prompt with today's date attached.
+ * The prompt, with today's date and the school's own details attached.
  *
- * Nothing else tells the model what day it is, so without this it has no idea
- * what "next week" means and invents one. In testing it repeatedly tried to
- * book 30 October 2023 — a date never offered — and retried it after being
+ * Nothing else tells the model what day it is, so without the date it has no
+ * idea what "next week" means and invents one. In testing it repeatedly tried
+ * to book 30 October 2023 — a date never offered — and retried it after being
  * refused.
+ *
+ * The school details are read fresh rather than baked in: prices and areas come
+ * from the instructor records and policies from Settings, so an office edit
+ * changes what the phone says without a deploy.
  */
-export function buildSystemPrompt(): string {
-  return `${SYSTEM_PROMPT}
+export async function buildSystemPrompt(): Promise<string> {
+  let about = "";
+  try {
+    about = describeSchool(await getSchoolFacts());
+  } catch (error) {
+    // A caller reaching an agent that cannot quote a price is still far better
+    // than a caller reaching nothing at all.
+    console.error("[voice] could not load school details:", error);
+  }
+
+  return `${about}
+
+${SYSTEM_PROMPT}
 
 Today is ${todayInSchoolTimezone()}. Work out "tomorrow", "next week" and similar from that date only. Never guess a date, and never use a date that did not come from search_available_lesson_slots.`;
 }

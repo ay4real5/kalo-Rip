@@ -108,7 +108,9 @@ export function handleCall(twilioWs: WebSocket) {
       // a dead line.
       sendToOpenAi({
         type: "response.create",
-        response: { instructions: `Greet the caller: "${config.greeting}"` },
+        response: {
+          instructions: `Greet the caller: "${session.greeting ?? config.greeting}"`,
+        },
       });
     });
 
