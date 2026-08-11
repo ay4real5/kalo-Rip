@@ -58,9 +58,17 @@ export function handleCall(twilioWs: WebSocket) {
     try {
       session = await fetchSessionConfig();
     } catch (error) {
+      // Rather than drop the caller into silence, fall back to a usable
+      // session. The agent can still talk and take details; it just cannot
+      // look anything up until the app is reachable again.
       console.error(`[call ${callSid}] could not load session config:`, error);
-      closeBoth("session config unavailable");
-      return;
+      session = {
+        instructions:
+          "You are a UK driving-school receptionist. Our booking system is temporarily unavailable, " +
+          "so apologise briefly, take the caller's name and number, and say someone will call them " +
+          "straight back. Keep it to one or two short sentences.",
+        tools: [],
+      };
     }
 
     openAiWs = new WebSocket(

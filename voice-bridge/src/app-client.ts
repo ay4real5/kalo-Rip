@@ -33,9 +33,18 @@ const headers = {
  * still the day it booted.
  */
 export async function fetchSessionConfig(): Promise<SessionConfig> {
-  const res = await fetch(`${config.appUrl}/api/voice/tool`, { headers });
+  // Bounded, because this is on the path to the caller hearing anything at
+  // all. Without a timeout an unreachable app leaves the call sitting in
+  // silence for its whole duration — which is exactly how this failed: the
+  // fetch never returned, so the OpenAI socket was never opened.
+  const res = await fetch(`${config.appUrl}/api/voice/tool`, {
+    headers,
+    signal: AbortSignal.timeout(6000),
+  });
   if (!res.ok) {
-    throw new Error(`Session config failed: ${res.status} ${await res.text()}`);
+    throw new Error(
+      `Session config failed: ${res.status} ${(await res.text()).slice(0, 200)}`
+    );
   }
   return (await res.json()) as SessionConfig;
 }
