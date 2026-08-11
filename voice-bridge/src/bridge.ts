@@ -40,6 +40,7 @@ export function handleCall(twilioWs: WebSocket) {
   /** Audio queued before the OpenAI socket finished opening. */
   const pending: string[] = [];
   let openAiReady = false;
+  let greetingText = config.greeting;
 
   const closeBoth = (reason: string) => {
     if (openAiWs && openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
@@ -70,6 +71,8 @@ export function handleCall(twilioWs: WebSocket) {
         tools: [],
       };
     }
+
+    greetingText = session.greeting ?? config.greeting;
 
     openAiWs = new WebSocket(
       `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(config.model)}`,
@@ -104,12 +107,18 @@ export function handleCall(twilioWs: WebSocket) {
       }
       pending.length = 0;
 
-      // Speak first. Callers expect a greeting, and silence on answer reads as
-      // a dead line.
+      // Straight after session.update, not on session.updated. Messages on one
+      // socket are processed in order, so the session is already speaking
+      // mu-law by the time this is handled — waiting for the confirmation
+      // added three seconds of dead air on answer for no benefit. Measured.
+      //
+      // Quoted as an exact script rather than "greet the caller": a
+      // description invites the model to write its own line, and it drops the
+      // school's name from it.
       sendToOpenAi({
         type: "response.create",
         response: {
-          instructions: `Greet the caller: "${session.greeting ?? config.greeting}"`,
+          instructions: `Say exactly this, word for word, and nothing else: "${greetingText}"`,
         },
       });
     });

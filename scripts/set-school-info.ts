@@ -15,6 +15,10 @@ const prisma = new PrismaClient();
 const SCHOOL_INFO: Record<string, string> = {
   school_name: "Shah Driving School",
 
+  // How the phone is answered. Change this line and re-run to change the
+  // greeting on both the Realtime and fallback paths.
+  greeting: "Welcome to Shah Driving School. How can I help you today?",
+
   block_discounts:
     "we don't currently offer block booking discounts, lessons are paid for individually",
   payment_when: "payment is due before each lesson",

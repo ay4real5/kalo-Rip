@@ -19,6 +19,7 @@ import { prisma } from "@/app/lib/prisma";
 
 export const SCHOOL_SETTING_KEYS = [
   "school_name",
+  "greeting",
   "block_discounts",
   "payment_when",
   "payment_methods",

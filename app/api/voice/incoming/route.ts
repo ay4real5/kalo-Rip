@@ -34,11 +34,21 @@ export async function POST(req: Request) {
   // The school's own name, so the greeting matches the business rather than a
   // generic line. Falls back if Settings is unreachable — a caller hearing a
   // vague greeting beats a call that fails.
-  const schoolName = await getSetting("school_name").catch(() => null);
+  const [greeting, schoolName] = await Promise.all([
+    getSetting("greeting").catch(() => null),
+    getSetting("school_name").catch(() => null),
+  ]);
 
-  return new NextResponse(buildTwiML(fromNumber, toNumber, schoolName), {
-    headers: { "Content-Type": "text/xml" },
-  });
+  return new NextResponse(
+    buildTwiML(
+      fromNumber,
+      toNumber,
+      greeting ?? `Welcome to ${schoolName ?? "the driving school"}. How can I help you today?`
+    ),
+    {
+      headers: { "Content-Type": "text/xml" },
+    }
+  );
 }
 
 const escapeXml = (text: string) =>
@@ -53,11 +63,7 @@ const escapeXml = (text: string) =>
  * effect on the next call with no deploy. Defaults to gather, so a missing or
  * mistyped variable lands on the implementation known to work.
  */
-function buildTwiML(
-  fromNumber: string,
-  toNumber: string,
-  schoolName?: string | null
-): string {
+function buildTwiML(fromNumber: string, toNumber: string, greeting: string): string {
   const bridgeUrl = process.env.VOICE_BRIDGE_WSS_URL;
 
   if (process.env.VOICE_MODE === "realtime" && bridgeUrl) {
@@ -88,7 +94,7 @@ function buildTwiML(
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Emma-Neural" language="en-GB">
-    Hello, you've reached ${escapeXml(schoolName ?? "the driving school booking line")}. How can I help?
+    ${escapeXml(greeting)}
   </Say>
   <Gather input="speech" action="${actionUrl}?silent=0" method="POST" language="en-GB" speechTimeout="1" timeout="7" maxSpeechTime="15" actionOnEmptyResult="true"/>
 </Response>`;

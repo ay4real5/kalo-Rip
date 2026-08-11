@@ -114,12 +114,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const schoolName = await getSetting("school_name").catch(() => null);
+  // Spoken the instant the call connects. Editable in Settings so the office
+  // can change how the phone is answered without a deploy; falls back to the
+  // school's name if no wording has been set.
+  const [greeting, schoolName] = await Promise.all([
+    getSetting("greeting").catch(() => null),
+    getSetting("school_name").catch(() => null),
+  ]);
 
   return NextResponse.json({
-    // Spoken the instant the call connects, so it carries the school's name
-    // rather than the bridge holding its own copy.
-    greeting: `Hello, you've reached ${schoolName ?? "the driving school booking line"}. How can I help?`,
+    greeting:
+      greeting ??
+      `Welcome to ${schoolName ?? "the driving school"}. How can I help you today?`,
     instructions: await buildSystemPrompt(),
     // Realtime takes a flat tool shape rather than Chat Completions' nesting.
     tools: getToolDefinitions().map((t) => ({
