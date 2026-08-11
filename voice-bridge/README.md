@@ -22,7 +22,9 @@ stop being answered.
 
 1. New project → Deploy from GitHub repo → this repository.
 2. Settings → **Root Directory: `voice-bridge`**. Without this Railway builds the
-   Next.js app instead.
+   Next.js app instead and the deploy fails on `prisma/schema.prisma` needing
+   `DATABASE_URL` — that error means this step was missed, not that anything is
+   wrong with the bridge.
 3. Settings → Networking → **Generate Domain**. Note the hostname.
 4. Variables:
 
