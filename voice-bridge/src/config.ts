@@ -1,7 +1,12 @@
 /** Environment for the bridge, validated once at startup. */
 
 function required(name: string): string {
-  const value = process.env[name];
+  // Trimmed, because these are pasted into a dashboard by hand and a trailing
+  // newline rides along more often than not. A newline in the API key makes
+  // Node refuse the Authorization header outright (ERR_INVALID_CHAR), so the
+  // OpenAI socket never opens and the caller hears silence for the whole call
+  // with nothing obviously wrong anywhere else. That cost an afternoon.
+  const value = process.env[name]?.trim();
   if (!value) {
     // Fail at boot, not on the first call. A misconfigured bridge that starts
     // successfully and then drops callers is far worse than one that refuses
@@ -19,7 +24,7 @@ function required(name: string): string {
  * across.
  */
 function appUrl(): string {
-  const value = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+  const value = (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL)?.trim();
   if (!value) {
     throw new Error("Missing required environment variable: APP_URL");
   }
@@ -42,11 +47,11 @@ export const config = {
   appUrl: appUrl(),
   /** Shared with the app's /api/voice/tool endpoint. */
   bridgeSecret: required("VOICE_BRIDGE_SECRET"),
-  model: process.env.REALTIME_MODEL ?? "gpt-realtime-2.1",
-  voice: process.env.REALTIME_VOICE ?? "marin",
+  model: process.env.REALTIME_MODEL?.trim() ?? "gpt-realtime-2.1",
+  voice: process.env.REALTIME_VOICE?.trim() ?? "marin",
   /** Spoken as soon as the call connects, so the caller isn't met with silence. */
   greeting:
-    process.env.VOICE_GREETING ??
+    process.env.VOICE_GREETING?.trim() ??
     "Hello, you've reached the driving school booking line. How can I help?",
 } as const;
 
