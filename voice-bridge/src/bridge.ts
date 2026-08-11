@@ -147,13 +147,17 @@ export function handleCall(twilioWs: WebSocket) {
       }
 
       case "input_audio_buffer.speech_started": {
-        // The caller has started talking over the agent. Drop whatever Twilio
-        // has buffered so the agent stops mid-word, which is what makes an
-        // interruption feel natural rather than the caller waiting it out.
+        // The caller has started talking. Drop whatever Twilio has buffered so
+        // the agent stops mid-word rather than the caller having to wait it
+        // out.
+        //
+        // No response.cancel here: turn detection runs with
+        // interrupt_response, so OpenAI already ends its own turn. Sending one
+        // anyway raised response_cancel_not_active on every turn the agent
+        // happened not to be speaking, which was most of them.
         if (twilioWs.readyState === WebSocket.OPEN) {
           twilioWs.send(JSON.stringify({ event: "clear", streamSid }));
         }
-        sendToOpenAi({ type: "response.cancel" });
         break;
       }
 
@@ -163,7 +167,11 @@ export function handleCall(twilioWs: WebSocket) {
       }
 
       case "error": {
-        console.error(`[call ${callSid}] OpenAI error event:`, event.error);
+        // Serialised, not passed as an object: console.error truncates nested
+        // objects in Railway's log view, which turned a specific schema
+        // complaint into an unreadable "invalid_request_error" and cost real
+        // time to track down.
+        console.error(`[call ${callSid}] OpenAI error: ${JSON.stringify(event.error)}`);
         break;
       }
     }
