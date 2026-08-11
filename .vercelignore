@@ -1,0 +1,5 @@
+# The Realtime voice bridge is a separate service deployed to Railway. It has
+# its own package.json and lockfile, which Vercel has no reason to see — a
+# second Node project inside the repo only gives the build something else to
+# trip over.
+voice-bridge/
