@@ -1,0 +1,25 @@
+{
+  "name": "kalo-rip-voice-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Streams audio between Twilio Media Streams and the OpenAI Realtime API",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --enable-source-maps dist/index.js",
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}
